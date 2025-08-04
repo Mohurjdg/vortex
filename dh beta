@@ -11,18 +11,16 @@ local SilentAimSettings = {
     Enabled = false,
     ClassName = "Universal Silent Aim - Averiias, Stefanuk12, xaxa",
     ToggleKey = "RightAlt",
-    TeamCheck = false,
     VisibleCheck = false, 
     TargetPart = "HumanoidRootPart",
     SilentAimMethod = "Raycast",
     FOVRadius = 130,
     FOVVisible = false,
+    FOVFilled = false,
     ShowSilentAimTarget = false, 
     MouseHitPrediction = false,
     MouseHitPredictionAmount = 0.165,
-    HitChance = 100,
-    AutoFireEnabled = false,
-    AutoFireToggleKey = "None"
+    HitChance = 100
 }
 
 local LegitbotSettings = {
@@ -38,7 +36,6 @@ local LegitbotSettings = {
     CircleFilled = false,
     CircleThickness = 2,
     CircleVisible = true,
-    TeamCheck = false,
     Smoothness = 0.01,
     StickyAim = false
 }
@@ -46,19 +43,16 @@ local LegitbotSettings = {
 local VisualsSettings = {
     BoxESPEnabled = false,
     BoxESPMethod = "2D",
+    BoxESPFilled = false,
+    BoxESPColor = Color3.fromRGB(255, 255, 255),
+    BoxESPFilledTransparency = 0.5,
     SkeletonESPEnabled = false,
+    SkeletonESPColor = Color3.fromRGB(255, 255, 255),
     HealthBarEnabled = false,
+    HealthBarColor = Color3.fromRGB(0, 255, 0),
     NameESPEnabled = false,
-    NameESPTeamCheck = false,
-    NameESPVisibleCheck = false,
-    NameESPMaxDistance = 1000,
     NameESPColor = Color3.fromRGB(255, 255, 255),
-    TeamCheck = false,
-    VisibleOnly = false,
-    LocalPlayerChamsEnabled = false,
-    LocalPlayerChamsColor = Color3.fromRGB(209, 206, 255),
-    HeldWeaponChamsEnabled = false,
-    HeldWeaponChamsColor = Color3.fromRGB(209, 206, 255)
+    VisibleOnly = false
 }
 
 local MiscSettings = {
@@ -76,8 +70,13 @@ local MiscSettings = {
     HitboxExpanderSize = 10,
     HitboxExpanderColor = Color3.fromRGB(209, 206, 255),
     HitboxExpanderTransparency = 0.7,
-    RapidFireEnabled = false, -- New: Toggle for rapid fire
-    RapidFireDelay = 0.01 -- New: Delay between shots (adjustable)
+    RapidFireEnabled = false,
+    RapidFireDelay = 0.01,
+    SpamDanceEnabled = false
+}
+
+local TrollSettings = {
+    MacanEnabled = false
 }
 
 -- Variables
@@ -85,6 +84,7 @@ getgenv().SilentAimSettings = SilentAimSettings
 getgenv().LegitbotSettings = LegitbotSettings
 getgenv().VisualsSettings = VisualsSettings
 getgenv().MiscSettings = MiscSettings
+getgenv().TrollSettings = TrollSettings
 local MainFileName = "UniversalSilentAim"
 local SelectedFile, FileToSave = "", ""
 
@@ -114,23 +114,30 @@ local create = coroutine.create
 local ValidTargetParts = {"Head", "HumanoidRootPart"}
 local PredictionAmount = 0.165
 
-local mouse_box = Drawing.new("Square")
-mouse_box.Visible = false 
-mouse_box.ZIndex = 999 
-mouse_box.Color = Color3.fromRGB(54, 57, 241)
-mouse_box.Thickness = 20 
-mouse_box.Size = Vector2.new(20, 20)
-mouse_box.Filled = true 
+-- Silent Aim Crosshair
+local mouse_cross_h = Drawing.new("Line")
+mouse_cross_h.Visible = false
+mouse_cross_h.ZIndex = 999
+mouse_cross_h.Color = Color3.fromRGB(54, 57, 241)
+mouse_cross_h.Thickness = 2
+mouse_cross_h.Transparency = 1
+
+local mouse_cross_v = Drawing.new("Line")
+mouse_cross_v.Visible = false
+mouse_cross_v.ZIndex = 999
+mouse_cross_v.Color = Color3.fromRGB(54, 57, 241)
+mouse_cross_v.Thickness = 2
+mouse_cross_v.Transparency = 1
 
 local fov_circle = Drawing.new("Circle")
 fov_circle.Thickness = 1
 fov_circle.NumSides = 100
-fov_circle.Radius = 180
-fov_circle.Filled = false
+fov_circle.Radius = SilentAimSettings.FOVRadius
+fov_circle.Filled = SilentAimSettings.FOVFilled
 fov_circle.Visible = false
 fov_circle.ZIndex = 999
-fov_circle.Transparency = 1
-fov_circle.Color = Color3.fromRGB(54, 57, 241)
+fov_circle.Transparency = SilentAimSettings.FOVFilled and 0.5 or 1
+fov_circle.Color = Color3.fromRGB(255, 255, 255)
 
 local legitbot_fov_circle = Drawing.new("Circle")
 legitbot_fov_circle.Thickness = 1
@@ -146,6 +153,27 @@ local box_esp_instances = {}
 local health_bar_instances = {}
 local skeleton_esp_instances = {}
 local name_esp_instances = {}
+
+local danceAnimationId = "rbxassetid://10714340543"
+local danceTrack = nil
+
+-- Macan Variables
+local macanSound = Instance.new("Sound")
+macanSound.SoundId = "rbxassetid://112502669671413"
+macanSound.Looped = true
+macanSound.Parent = game:GetService("SoundService")
+
+local macanGui = Instance.new("ScreenGui")
+protectgui(macanGui)
+macanGui.IgnoreGuiInset = true
+macanGui.Parent = game:GetService("CoreGui")
+local macanImage = Instance.new("ImageLabel")
+macanImage.Size = UDim2.new(1, 0, 1, 0)
+macanImage.Position = UDim2.new(0, 0, 0, 0)
+macanImage.Image = "rbxassetid://140361833679984"
+macanImage.BackgroundTransparency = 1
+macanImage.Visible = false
+macanImage.Parent = macanGui
 
 local ExpectedArguments = {
     FindPartOnRayWithIgnoreList = {
@@ -218,28 +246,35 @@ local function UpdateFile(FileName)
     assert(FileName, "FileName must be a string")
     local ConfigData = {
         Enabled = SilentAimSettings.Enabled,
-        TeamCheck = SilentAimSettings.TeamCheck,
         VisibleCheck = SilentAimSettings.VisibleCheck,
         TargetPart = SilentAimSettings.TargetPart,
         SilentAimMethod = SilentAimSettings.SilentAimMethod,
         FOVRadius = SilentAimSettings.FOVRadius,
         FOVVisible = SilentAimSettings.FOVVisible,
+        FOVFilled = SilentAimSettings.FOVFilled,
         ShowSilentAimTarget = SilentAimSettings.ShowSilentAimTarget,
         MouseHitPrediction = SilentAimSettings.MouseHitPrediction,
         MouseHitPredictionAmount = SilentAimSettings.MouseHitPredictionAmount,
         HitChance = SilentAimSettings.HitChance,
-        AutoFireEnabled = SilentAimSettings.AutoFireEnabled,
         NoClipEnabled = MiscSettings.NoClipEnabled,
         HitboxExpanderEnabled = MiscSettings.HitboxExpanderEnabled,
         HitboxExpanderSize = MiscSettings.HitboxExpanderSize,
         HitboxExpanderColor = MiscSettings.HitboxExpanderColor,
         HitboxExpanderTransparency = MiscSettings.HitboxExpanderTransparency,
-        LocalPlayerChamsEnabled = VisualsSettings.LocalPlayerChamsEnabled,
-        LocalPlayerChamsColor = VisualsSettings.LocalPlayerChamsColor,
-        HeldWeaponChamsEnabled = VisualsSettings.HeldWeaponChamsEnabled,
-        HeldWeaponChamsColor = VisualsSettings.HeldWeaponChamsColor,
         RapidFireEnabled = MiscSettings.RapidFireEnabled,
-        RapidFireDelay = MiscSettings.RapidFireDelay
+        RapidFireDelay = MiscSettings.RapidFireDelay,
+        BoxESPFilled = VisualsSettings.BoxESPFilled,
+        BoxESPColor = VisualsSettings.BoxESPColor,
+        BoxESPFilledTransparency = VisualsSettings.BoxESPFilledTransparency,
+        SkeletonESPEnabled = VisualsSettings.SkeletonESPEnabled,
+        SkeletonESPColor = VisualsSettings.SkeletonESPColor,
+        HealthBarEnabled = VisualsSettings.HealthBarEnabled,
+        HealthBarColor = VisualsSettings.HealthBarColor,
+        NameESPEnabled = VisualsSettings.NameESPEnabled,
+        NameESPColor = VisualsSettings.NameESPColor,
+        VisibleOnly = VisualsSettings.VisibleOnly,
+        SpamDanceEnabled = MiscSettings.SpamDanceEnabled,
+        MacanEnabled = TrollSettings.MacanEnabled
     }
     writefile(string.format("%s/%s/%s.lua", MainFileName, tostring(game.PlaceId), FileName), HttpService:JSONEncode(ConfigData))
 end
@@ -252,28 +287,36 @@ local function LoadFile(FileName)
         SilentAimSettings[Index] = Value
         MiscSettings[Index] = Value
         VisualsSettings[Index] = Value
+        TrollSettings[Index] = Value
     end
-    Toggles.TeamCheck:SetValue(SilentAimSettings.TeamCheck)
     Toggles.VisibleCheck:SetValue(SilentAimSettings.VisibleCheck)
     Options.TargetPart:SetValue(SilentAimSettings.TargetPart)
     Options.Method:SetValue(SilentAimSettings.SilentAimMethod)
     Toggles.Visible:SetValue(SilentAimSettings.FOVVisible)
+    Toggles.FOVFilled:SetValue(SilentAimSettings.FOVFilled)
     Options.Radius:SetValue(SilentAimSettings.FOVRadius)
     Toggles.MousePosition:SetValue(SilentAimSettings.ShowSilentAimTarget)
     Toggles.Prediction:SetValue(SilentAimSettings.MouseHitPrediction)
     Options.Amount:SetValue(SilentAimSettings.MouseHitPredictionAmount)
     Options.HitChance:SetValue(SilentAimSettings.HitChance)
-    Toggles.autofire_Enabled:SetValue(SilentAimSettings.AutoFireEnabled)
     Toggles.misc_NoClipEnabled:SetValue(MiscSettings.NoClipEnabled)
     Toggles.misc_HitboxExpanderEnabled:SetValue(MiscSettings.HitboxExpanderEnabled)
     Options.misc_HitboxExpanderSize:SetValue(MiscSettings.HitboxExpanderSize)
     Options.misc_HitboxExpanderColor:SetValue(MiscSettings.HitboxExpanderColor)
-    Toggles.visuals_LocalPlayerChamsEnabled:SetValue(VisualsSettings.LocalPlayerChamsEnabled)
-    Options.visuals_LocalPlayerChamsColor:SetValue(VisualsSettings.LocalPlayerChamsColor)
-    Toggles.visuals_HeldWeaponChamsEnabled:SetValue(VisualsSettings.HeldWeaponChamsEnabled)
-    Options.visuals_HeldWeaponChamsColor:SetValue(VisualsSettings.HeldWeaponChamsColor)
     Toggles.misc_RapidFireEnabled:SetValue(MiscSettings.RapidFireEnabled)
     Options.misc_RapidFireDelay:SetValue(MiscSettings.RapidFireDelay)
+    Toggles.visuals_BoxESPEnabled:SetValue(VisualsSettings.BoxESPEnabled)
+    Toggles.visuals_BoxESPFilled:SetValue(VisualsSettings.BoxESPFilled)
+    Options.visuals_BoxESPColor:SetValue(VisualsSettings.BoxESPColor)
+    Options.visuals_BoxESPFilledTransparency:SetValue(VisualsSettings.BoxESPFilledTransparency)
+    Toggles.visuals_SkeletonESPEnabled:SetValue(VisualsSettings.SkeletonESPEnabled)
+    Options.visuals_SkeletonESPColor:SetValue(VisualsSettings.SkeletonESPColor)
+    Toggles.visuals_HealthBarEnabled:SetValue(VisualsSettings.HealthBarEnabled)
+    Options.visuals_HealthBarColor:SetValue(VisualsSettings.HealthBarColor)
+    Toggles.visuals_NameESPEnabled:SetValue(VisualsSettings.NameESPEnabled)
+    Options.visuals_NameESPColor:SetValue(VisualsSettings.NameESPColor)
+    Toggles.visuals_VisibleOnly:SetValue(VisualsSettings.VisibleOnly)
+    Toggles.troll_MacanEnabled:SetValue(TrollSettings.MacanEnabled)
 end
 
 local function getPositionOnScreen(Vector)
@@ -320,7 +363,6 @@ local function getClosestPlayer()
     local DistanceToMouse
     for _, Player in next, GetPlayers(Players) do
         if Player == LocalPlayer then continue end
-        if SilentAimSettings.TeamCheck and Player.Team == LocalPlayer.Team then continue end
         local Character = Player.Character
         if not Character then continue end
         local HumanoidRootPart = FindFirstChild(Character, "HumanoidRootPart")
@@ -340,10 +382,6 @@ end
 
 local function getClosestPlayerForLegitbot()
     if LegitbotSettings.StickyAim and legitbotTarget and legitbotTarget.Character and legitbotTarget.Character:FindFirstChild(LegitbotSettings.AimPart) and legitbotTarget.Character:FindFirstChild("Humanoid") and legitbotTarget.Character.Humanoid.Health > 0 then
-        if LegitbotSettings.TeamCheck and legitbotTarget.Team == LocalPlayer.Team then
-            legitbotTarget = nil
-            return nil
-        end
         local screenPos, onScreen = WorldToViewportPoint(Camera, legitbotTarget.Character[LegitbotSettings.AimPart].Position)
         if onScreen then
             local distance = (Vector2.new(screenPos.X, screenPos.Y) - getMousePosition()).Magnitude
@@ -358,7 +396,6 @@ local function getClosestPlayerForLegitbot()
     local mousePos = getMousePosition()
     for _, player in next, GetPlayers(Players) do
         if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild(LegitbotSettings.AimPart) then
-            if LegitbotSettings.TeamCheck and player.Team == LocalPlayer.Team then continue end
             local targetPart = player.Character[LegitbotSettings.AimPart]
             local screenPos, onScreen = WorldToViewportPoint(Camera, targetPart.Position)
             if onScreen then
@@ -379,7 +416,6 @@ local function getClosestPlayerToCenter()
     local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
     for _, player in next, GetPlayers(Players) do
         if player == LocalPlayer then continue end
-        if SilentAimSettings.TeamCheck and player.Team == LocalPlayer.Team then continue end
         local character = player.Character
         if not character then continue end
         local humanoidRootPart = FindFirstChild(character, "HumanoidRootPart")
@@ -418,6 +454,43 @@ local function lerpCFrame(current, target, alpha)
     return current:Lerp(target, alpha)
 end
 
+-- Spam Dance Logic
+local function setupDance()
+    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("Humanoid") then return end
+    local humanoid = LocalPlayer.Character:WaitForChild("Humanoid")
+    local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator", humanoid)
+    local danceAnimation = Instance.new("Animation")
+    danceAnimation.AnimationId = danceAnimationId
+    danceTrack = animator:LoadAnimation(danceAnimation)
+    danceTrack.Priority = Enum.AnimationPriority.Action
+    danceTrack.Looped = true
+end
+
+local function playDance()
+    if MiscSettings.SpamDanceEnabled and danceTrack and not danceTrack.IsPlaying then
+        danceTrack:Play()
+    end
+end
+
+local function stopDance()
+    if danceTrack and danceTrack.IsPlaying then
+        danceTrack:Stop()
+    end
+end
+
+-- Macan Logic
+local function updateMacan()
+    if TrollSettings.MacanEnabled then
+        if not macanSound.IsPlaying then
+            macanSound:Play()
+        end
+        macanImage.Visible = true
+    else
+        macanSound:Stop()
+        macanImage.Visible = false
+    end
+end
+
 -- Name ESP
 local function createNameESP(player)
     if player == LocalPlayer or not player.Character or not player.Character:FindFirstChild("Head") then return end
@@ -439,7 +512,7 @@ local function createNameESP(player)
     name_esp_instances[player] = billboard
 end
 
--- Box ESP, Skeleton ESP, Health Bar
+-- Box ESP
 local function createBoxESP(player)
     if player == LocalPlayer or not player.Character then return end
     local box = {}
@@ -448,23 +521,15 @@ local function createBoxESP(player)
             box[i] = Drawing.new("Line")
             box[i].Thickness = 1
             box[i].Transparency = 1
-            box[i].Color = Color3.fromRGB(255, 255, 255)
-            box[i].ZIndex = 997
-        end
-    elseif VisualsSettings.BoxESPMethod == "3D" then
-        for i = 1, 12 do
-            box[i] = Drawing.new("Line")
-            box[i].Thickness = 1
-            box[i].Transparency = 1
-            box[i].Color = Color3.fromRGB(255, 255, 255)
+            box[i].Color = VisualsSettings.BoxESPColor
             box[i].ZIndex = 997
         end
     else -- 2D
         box[1] = Drawing.new("Square")
         box[1].Thickness = 1
-        box[1].Filled = false
-        box[1].Transparency = 1
-        box[1].Color = Color3.fromRGB(255, 255, 255)
+        box[1].Filled = VisualsSettings.BoxESPFilled
+        box[1].Transparency = VisualsSettings.BoxESPFilled and VisualsSettings.BoxESPFilledTransparency or 1
+        box[1].Color = VisualsSettings.BoxESPColor
         box[1].ZIndex = 997
     end
     box_esp_instances[player] = box
@@ -475,6 +540,7 @@ local function createHealthBar(player)
     local bar = Drawing.new("Line")
     bar.Thickness = 2
     bar.Transparency = 1
+    bar.Color = VisualsSettings.HealthBarColor
     bar.ZIndex = 996
     health_bar_instances[player] = bar
 end
@@ -498,7 +564,7 @@ local function createSkeletonESP(player)
         skeleton[i] = Drawing.new("Line")
         skeleton[i].Thickness = 1
         skeleton[i].Transparency = 1
-        skeleton[i].Color = Color3.fromRGB(255, 255, 255)
+        skeleton[i].Color = VisualsSettings.SkeletonESPColor
         skeleton[i].ZIndex = 995
     end
     skeleton_esp_instances[player] = {bones = bones, lines = skeleton}
@@ -531,47 +597,10 @@ local function updateHitboxExpander()
     end
 end
 
--- Local Player and Held Weapon Chams
-local function applyForceFieldToModel(model, color)
-    for _, desc in pairs(model:GetDescendants()) do
-        if desc:IsA("BasePart") then
-            desc.Material = Enum.Material.ForceField
-            desc.Color = color
-            desc.CanCollide = false
-        end
-    end
-end
-
-local function setupCharacterChams(character)
-    if VisualsSettings.LocalPlayerChamsEnabled then
-        applyForceFieldToModel(character, VisualsSettings.LocalPlayerChamsColor)
-    end
-    if VisualsSettings.HeldWeaponChamsEnabled then
-        character.ChildAdded:Connect(function(child)
-            if child:IsA("Tool") then
-                applyForceFieldToModel(child, VisualsSettings.HeldWeaponChamsColor)
-            end
-        end)
-        for _, child in pairs(character:GetChildren()) do
-            if child:IsA("Tool") then
-                applyForceFieldToModel(child, VisualsSettings.HeldWeaponChamsColor)
-            end
-        end
-    end
-end
-
--- Initialize Local Player Chams
-LocalPlayer.CharacterAdded:Connect(function(character)
-    setupCharacterChams(character)
-end)
-
-if LocalPlayer.Character then
-    setupCharacterChams(LocalPlayer.Character)
-end
-
+-- Visuals Update
 local function updateVisuals()
     for player, box in pairs(box_esp_instances) do
-        if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") or (VisualsSettings.TeamCheck and player.Team == LocalPlayer.Team) or (VisualsSettings.VisibleOnly and not IsPlayerVisible(player)) then
+        if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") or (VisualsSettings.VisibleOnly and not IsPlayerVisible(player)) then
             if VisualsSettings.BoxESPMethod == "2D" then
                 box[1].Visible = false
                 box[1]:Remove()
@@ -617,34 +646,15 @@ local function updateVisuals()
                         for i, line in ipairs(box) do
                             line.From = positions[i][1]
                             line.To = positions[i][2]
+                            line.Color = VisualsSettings.BoxESPColor
                             line.Visible = VisualsSettings.BoxESPEnabled
-                        end
-                    elseif VisualsSettings.BoxESPMethod == "3D" then
-                        local corners = {
-                            root.Position + Vector3.new(-width / 2, height / 2, -depth / 2),
-                            root.Position + Vector3.new(width / 2, height / 2, -depth / 2),
-                            root.Position + Vector3.new(width / 2, height / 2, depth / 2),
-                            root.Position + Vector3.new(-width / 2, height / 2, depth / 2),
-                            root.Position + Vector3.new(-width / 2, -height / 2, -depth / 2),
-                            root.Position + Vector3.new(width / 2, -height / 2, -depth / 2),
-                            root.Position + Vector3.new(width / 2, -height / 2, depth / 2),
-                            root.Position + Vector3.new(-width / 2, -height / 2, depth / 2)
-                        }
-                        local lines = {
-                            {1, 2}, {2, 3}, {3, 4}, {4, 1},
-                            {5, 6}, {6, 7}, {7, 8}, {8, 5},
-                            {1, 5}, {2, 6}, {3, 7}, {4, 8}
-                        }
-                        for i, line in ipairs(box) do
-                            local fromPos, fromOnScreen = WorldToViewportPoint(Camera, corners[lines[i][1]])
-                            local toPos, toOnScreen = WorldToViewportPoint(Camera, corners[lines[i][2]])
-                            line.From = Vector2.new(fromPos.X, fromPos.Y)
-                            line.To = Vector2.new(toPos.X, toPos.Y)
-                            line.Visible = VisualsSettings.BoxESPEnabled and fromOnScreen and toOnScreen
                         end
                     else -- 2D
                         box[1].Size = Vector2.new(w, h)
                         box[1].Position = Vector2.new(screenPos.X - w / 2, screenPos.Y - h / 2)
+                        box[1].Filled = VisualsSettings.BoxESPFilled
+                        box[1].Color = VisualsSettings.BoxESPColor
+                        box[1].Transparency = VisualsSettings.BoxESPFilled and VisualsSettings.BoxESPFilledTransparency or 1
                         box[1].Visible = VisualsSettings.BoxESPEnabled
                     end
                 else
@@ -660,7 +670,7 @@ local function updateVisuals()
         end
     end
     for player, bar in pairs(health_bar_instances) do
-        if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") or not player.Character:FindFirstChild("Humanoid") or (VisualsSettings.TeamCheck and player.Team == LocalPlayer.Team) or (VisualsSettings.VisibleOnly and not IsPlayerVisible(player)) then
+        if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") or not player.Character:FindFirstChild("Humanoid") or (VisualsSettings.VisibleOnly and not IsPlayerVisible(player)) then
             bar.Visible = false
             health_bar_instances[player] = nil
             bar:Remove()
@@ -681,7 +691,7 @@ local function updateVisuals()
                     local barHeight = h * healthFraction
                     bar.From = Vector2.new(screenPos.X - w / 2 - 2, screenPos.Y + h / 2)
                     bar.To = Vector2.new(screenPos.X - w / 2 - 2, screenPos.Y + h / 2 - barHeight)
-                    bar.Color = Color3.fromRGB(255 * (1 - healthFraction), 255 * healthFraction, 0)
+                    bar.Color = VisualsSettings.HealthBarColor
                     bar.Visible = VisualsSettings.HealthBarEnabled
                 else
                     bar.Visible = false
@@ -690,7 +700,7 @@ local function updateVisuals()
         end
     end
     for player, skeleton in pairs(skeleton_esp_instances) do
-        if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") or not player.Character:FindFirstChild("Humanoid") or (VisualsSettings.TeamCheck and player.Team == LocalPlayer.Team) or (VisualsSettings.VisibleOnly and not IsPlayerVisible(player)) then
+        if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") or not player.Character:FindFirstChild("Humanoid") or (VisualsSettings.VisibleOnly and not IsPlayerVisible(player)) then
             for _, line in ipairs(skeleton.lines) do
                 line.Visible = false
                 line:Remove()
@@ -703,7 +713,6 @@ local function updateVisuals()
                     line.Visible = false
                     line:Remove()
                 end
-                skeleton_esp_instances[player] = nil
             else
                 local _, onScreen = WorldToViewportPoint(Camera, player.Character.HumanoidRootPart.Position)
                 for i, bone in ipairs(skeleton.bones) do
@@ -714,6 +723,7 @@ local function updateVisuals()
                         local toPos, toOnScreen = WorldToViewportPoint(Camera, toPart.Position)
                         skeleton.lines[i].From = Vector2.new(fromPos.X, fromPos.Y)
                         skeleton.lines[i].To = Vector2.new(toPos.X, toPos.Y)
+                        skeleton.lines[i].Color = VisualsSettings.SkeletonESPColor
                         skeleton.lines[i].Visible = VisualsSettings.SkeletonESPEnabled and onScreen and fromOnScreen and toOnScreen
                     else
                         skeleton.lines[i].Visible = false
@@ -723,7 +733,7 @@ local function updateVisuals()
         end
     end
     for player, billboard in pairs(name_esp_instances) do
-        if not player.Character or not player.Character:FindFirstChild("Head") or not player.Character:FindFirstChild("Humanoid") or (VisualsSettings.NameESPTeamCheck and player.Team == LocalPlayer.Team) or (VisualsSettings.NameESPVisibleCheck and not IsPlayerVisible(player)) then
+        if not player.Character or not player.Character:FindFirstChild("Head") or not player.Character:FindFirstChild("Humanoid") then
             billboard:Destroy()
             name_esp_instances[player] = nil
         else
@@ -732,14 +742,8 @@ local function updateVisuals()
                 billboard:Destroy()
                 name_esp_instances[player] = nil
             else
-                local root = player.Character.HumanoidRootPart
-                local distance = (Camera.CFrame.Position - root.Position).Magnitude
-                if distance > VisualsSettings.NameESPMaxDistance then
-                    billboard.Enabled = false
-                else
-                    billboard.Enabled = VisualsSettings.NameESPEnabled
-                    billboard.TextLabel.TextColor3 = VisualsSettings.NameESPColor
-                end
+                billboard.Enabled = VisualsSettings.NameESPEnabled
+                billboard.TextLabel.TextColor3 = VisualsSettings.NameESPColor
             end
         end
     end
@@ -895,6 +899,12 @@ RunService.RenderStepped:Connect(function()
     updateFly()
     updateNoClip()
     updateHitboxExpander()
+    updateMacan()
+    if MiscSettings.SpamDanceEnabled then
+        playDance()
+    else
+        stopDance()
+    end
 end)
 
 RunService.Heartbeat:Connect(function()
@@ -923,21 +933,31 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
+-- Initialize Dance
+LocalPlayer.CharacterAdded:Connect(function(character)
+    task.wait()
+    setupDance()
+    if MiscSettings.SpamDanceEnabled then
+        playDance()
+    end
+end)
+if LocalPlayer.Character then
+    setupDance()
+end
+
 -- UI Creation & Handling
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/Library.lua"))()
 local Window = Library:CreateWindow({Title = 'Vortex.lol - paid dh', Center = true, AutoShow = true, TabPadding = 8, MenuFadeTime = 0.2})
 
-local GeneralTab = Window:AddTab("Slient aim")
+local GeneralTab = Window:AddTab("Silent aim")
 local MainBOX = GeneralTab:AddLeftTabbox("Main") do
     local Main = MainBOX:AddTab("Main")
     Main:AddToggle("aim_Enabled", {Text = "Enabled", Default = SilentAimSettings.Enabled}):AddKeyPicker("aim_Enabled_KeyPicker", {Default = SilentAimSettings.ToggleKey, SyncToggleState = true, Mode = "Toggle", Text = "Enabled", NoUI = false})
     Options.aim_Enabled_KeyPicker:OnClick(function()
         SilentAimSettings.Enabled = not SilentAimSettings.Enabled
         Toggles.aim_Enabled:SetValue(SilentAimSettings.Enabled)
-        mouse_box.Visible = SilentAimSettings.Enabled and Toggles.MousePosition.Value
-    end)
-    Main:AddToggle("TeamCheck", {Text = "Team Check", Default = SilentAimSettings.TeamCheck}):OnChanged(function()
-        SilentAimSettings.TeamCheck = Toggles.TeamCheck.Value
+        mouse_cross_h.Visible = SilentAimSettings.Enabled and Toggles.MousePosition.Value
+        mouse_cross_v.Visible = SilentAimSettings.Enabled and Toggles.MousePosition.Value
     end)
     Main:AddToggle("VisibleCheck", {Text = "Visible Check", Default = SilentAimSettings.VisibleCheck}):OnChanged(function()
         SilentAimSettings.VisibleCheck = Toggles.VisibleCheck.Value
@@ -945,7 +965,7 @@ local MainBOX = GeneralTab:AddLeftTabbox("Main") do
     Main:AddDropdown("TargetPart", {AllowNull = true, Text = "Target Part", Default = SilentAimSettings.TargetPart, Values = {"Head", "HumanoidRootPart", "Random"}}):OnChanged(function()
         SilentAimSettings.TargetPart = Options.TargetPart.Value
     end)
-    Main:AddDropdown("Method", {AllowNull = true, Text = "slient aim (debug shit)", Default = SilentAimSettings.SilentAimMethod, Values = {"Raycast"}}):OnChanged(function() 
+    Main:AddDropdown("Method", {AllowNull = true, Text = "Silent aim (debug shit)", Default = SilentAimSettings.SilentAimMethod, Values = {"Raycast"}}):OnChanged(function() 
         SilentAimSettings.SilentAimMethod = Options.Method.Value 
     end)
     Main:AddSlider('HitChance', {
@@ -959,29 +979,30 @@ local MainBOX = GeneralTab:AddLeftTabbox("Main") do
     Options.HitChance:OnChanged(function()
         SilentAimSettings.HitChance = Options.HitChance.Value
     end)
-    Main:AddToggle("autofire_Enabled", {Text = "Auto-Fire Enabled", Default = SilentAimSettings.AutoFireEnabled}):AddKeyPicker("autofire_Enabled_KeyPicker", {Default = SilentAimSettings.AutoFireToggleKey, SyncToggleState = true, Mode = "Toggle", Text = "Auto-Fire", NoUI = false})
-    Options.autofire_Enabled_KeyPicker:OnClick(function()
-        SilentAimSettings.AutoFireEnabled = not SilentAimSettings.AutoFireEnabled
-        Toggles.autofire_Enabled:SetValue(SilentAimSettings.AutoFireEnabled)
-    end)
 end
 
 local MiscellaneousBOX = GeneralTab:AddLeftTabbox("Miscellaneous")
 local FieldOfViewBOX = GeneralTab:AddLeftTabbox("Field Of View") do
     local Main = FieldOfViewBOX:AddTab("Fov")
-    Main:AddToggle("Visible", {Text = "Fov", Default = SilentAimSettings.FOVVisible}):AddColorPicker("Color", {Default = Color3.fromRGB(255, 255, 255)}):OnChanged(function()
+    Main:AddToggle("Visible", {Text = "Fov", Default = SilentAimSettings.FOVVisible}):OnChanged(function()
         fov_circle.Visible = Toggles.Visible.Value
         SilentAimSettings.FOVVisible = Toggles.Visible.Value
-        fov_circle.Color = Options.Color.Value
     end)
-    Main:AddSlider("Radius", {Text = "FOV Circle Radius", Min = 0, Max = 360, Default = SilentAimSettings.FOVRadius, Rounding = 0}):OnChanged(function()
+    Main:AddToggle("FOVFilled", {Text = "Fill FOV", Default = SilentAimSettings.FOVFilled}):OnChanged(function()
+        SilentAimSettings.FOVFilled = Toggles.FOVFilled.Value
+        fov_circle.Filled = SilentAimSettings.FOVFilled
+        fov_circle.Transparency = SilentAimSettings.FOVFilled and 0.5 or 1
+    end)
+    Main:AddSlider("Radius", {Text = "FOV Circle Radius", Min = 0, Max = 1280, Default = SilentAimSettings.FOVRadius, Rounding = 0}):OnChanged(function()
         fov_circle.Radius = Options.Radius.Value
         SilentAimSettings.FOVRadius = Options.Radius.Value
     end)
-    Main:AddToggle("MousePosition", {Text = "Slient aim target", Default = SilentAimSettings.ShowSilentAimTarget}):AddColorPicker("MouseVisualizeColor", {Default = Color3.fromRGB(54, 57, 241)}):OnChanged(function()
-        mouse_box.Visible = Toggles.MousePosition.Value and SilentAimSettings.Enabled
+    Main:AddToggle("MousePosition", {Text = "Silent aim target", Default = SilentAimSettings.ShowSilentAimTarget}):AddColorPicker("MouseVisualizeColor", {Default = Color3.fromRGB(255, 255, 255)}):OnChanged(function()
+        mouse_cross_h.Visible = Toggles.MousePosition.Value and SilentAimSettings.Enabled
+        mouse_cross_v.Visible = Toggles.MousePosition.Value and SilentAimSettings.Enabled
         SilentAimSettings.ShowSilentAimTarget = Toggles.MousePosition.Value 
-        mouse_box.Color = Options.MouseVisualizeColor.Value
+        mouse_cross_h.Color = Options.MouseVisualizeColor.Value
+        mouse_cross_v.Color = Options.MouseVisualizeColor.Value
     end)
     local PredictionTab = MiscellaneousBOX:AddTab("Prediction")
     PredictionTab:AddToggle("Prediction", {Text = "Prediction", Default = SilentAimSettings.MouseHitPrediction}):OnChanged(function()
@@ -1055,9 +1076,6 @@ local LegitbotBOX = LegitbotTab:AddLeftTabbox("Legitbot") do
     Main:AddDropdown("legitbot_Method", {AllowNull = true, Text = "Method", Default = LegitbotSettings.Method, Values = {"Mousemove", "Camlock"}}):OnChanged(function()
         LegitbotSettings.Method = Options.legitbot_Method.Value
     end)
-    Main:AddToggle("legitbot_TeamCheck", {Text = "Team Check", Default = LegitbotSettings.TeamCheck}):OnChanged(function()
-        LegitbotSettings.TeamCheck = Toggles.legitbot_TeamCheck.Value
-    end)
     Main:AddDropdown("legitbot_AimPart", {AllowNull = true, Text = "Target Part", Default = LegitbotSettings.AimPart, Values = {"Head", "HumanoidRootPart", "UpperTorso", "LowerTorso"}}):OnChanged(function()
         LegitbotSettings.AimPart = Options.legitbot_AimPart.Value
     end)
@@ -1088,7 +1106,7 @@ local VisualsBOX = VisualsTab:AddLeftTabbox("Visuals") do
     Main:AddToggle("visuals_BoxESPEnabled", {Text = "Box ESP Enabled", Default = VisualsSettings.BoxESPEnabled}):OnChanged(function()
         VisualsSettings.BoxESPEnabled = Toggles.visuals_BoxESPEnabled.Value
     end)
-    Main:AddDropdown("visuals_BoxESPMethod", {AllowNull = true, Text = "Box ESP Method", Default = VisualsSettings.BoxESPMethod, Values = {"Corner", "3D", "2D"}}):OnChanged(function()
+    Main:AddDropdown("visuals_BoxESPMethod", {AllowNull = true, Text = "Box ESP Method", Default = VisualsSettings.BoxESPMethod, Values = {"Corner", "2D"}}):OnChanged(function()
         VisualsSettings.BoxESPMethod = Options.visuals_BoxESPMethod.Value
         for player, box in pairs(box_esp_instances) do
             if VisualsSettings.BoxESPMethod == "2D" then
@@ -1106,92 +1124,67 @@ local VisualsBOX = VisualsTab:AddLeftTabbox("Visuals") do
             end
         end
     end)
+    Main:AddToggle("visuals_BoxESPFilled", {Text = "Box ESP Filled", Default = VisualsSettings.BoxESPFilled}):OnChanged(function()
+        VisualsSettings.BoxESPFilled = Toggles.visuals_BoxESPFilled.Value
+        for player, box in pairs(box_esp_instances) do
+            if VisualsSettings.BoxESPMethod == "2D" and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                box[1].Filled = VisualsSettings.BoxESPFilled
+                box[1].Transparency = VisualsSettings.BoxESPFilled and VisualsSettings.BoxESPFilledTransparency or 1
+                box[1].Color = VisualsSettings.BoxESPColor
+            end
+        end
+    end)
+    Main:AddSlider("visuals_BoxESPFilledTransparency", {Text = "Box ESP Fill Transparency", Min = 0, Max = 1, Default = VisualsSettings.BoxESPFilledTransparency, Rounding = 2}):OnChanged(function()
+        VisualsSettings.BoxESPFilledTransparency = Options.visuals_BoxESPFilledTransparency.Value
+        for player, box in pairs(box_esp_instances) do
+            if VisualsSettings.BoxESPMethod == "2D" and VisualsSettings.BoxESPFilled then
+                box[1].Transparency = VisualsSettings.BoxESPFilledTransparency
+            end
+        end
+    end)
+    Main:AddToggle("visuals_BoxESPColor", {Text = "Box ESP Color"}):AddColorPicker("visuals_BoxESPColorPicker", {Default = VisualsSettings.BoxESPColor}):OnChanged(function()
+        VisualsSettings.BoxESPColor = Options.visuals_BoxESPColorPicker.Value
+        for player, box in pairs(box_esp_instances) do
+            if VisualsSettings.BoxESPMethod == "2D" then
+                box[1].Color = VisualsSettings.BoxESPColor
+            else
+                for _, line in ipairs(box) do
+                    line.Color = VisualsSettings.BoxESPColor
+                end
+            end
+        end
+    end)
     Main:AddToggle("visuals_SkeletonESPEnabled", {Text = "Skeleton ESP Enabled", Default = VisualsSettings.SkeletonESPEnabled}):OnChanged(function()
         VisualsSettings.SkeletonESPEnabled = Toggles.visuals_SkeletonESPEnabled.Value
+    end)
+    Main:AddToggle("visuals_SkeletonESPColor", {Text = "Skeleton ESP Color"}):AddColorPicker("visuals_SkeletonESPColorPicker", {Default = VisualsSettings.SkeletonESPColor}):OnChanged(function()
+        VisualsSettings.SkeletonESPColor = Options.visuals_SkeletonESPColorPicker.Value
+        for player, skeleton in pairs(skeleton_esp_instances) do
+            for _, line in ipairs(skeleton.lines) do
+                line.Color = VisualsSettings.SkeletonESPColor
+            end
+        end
     end)
     Main:AddToggle("visuals_HealthBarEnabled", {Text = "Health Bar Enabled", Default = VisualsSettings.HealthBarEnabled}):OnChanged(function()
         VisualsSettings.HealthBarEnabled = Toggles.visuals_HealthBarEnabled.Value
     end)
+    Main:AddToggle("visuals_HealthBarColor", {Text = "Health Bar Color"}):AddColorPicker("visuals_HealthBarColorPicker", {Default = VisualsSettings.HealthBarColor}):OnChanged(function()
+        VisualsSettings.HealthBarColor = Options.visuals_HealthBarColorPicker.Value
+        for player, bar in pairs(health_bar_instances) do
+            bar.Color = VisualsSettings.HealthBarColor
+        end
+    end)
     Main:AddToggle("visuals_NameESPEnabled", {Text = "Name ESP Enabled", Default = VisualsSettings.NameESPEnabled}):OnChanged(function()
         VisualsSettings.NameESPEnabled = Toggles.visuals_NameESPEnabled.Value
     end)
-    Main:AddToggle("visuals_NameESPTeamCheck", {Text = "Name ESP Team Check", Default = VisualsSettings.NameESPTeamCheck}):OnChanged(function()
-        VisualsSettings.NameESPTeamCheck = Toggles.visuals_NameESPTeamCheck.Value
-    end)
-    Main:AddToggle("visuals_NameESPVisibleCheck", {Text = "Name ESP Visible Check", Default = VisualsSettings.NameESPVisibleCheck}):OnChanged(function()
-        VisualsSettings.NameESPVisibleCheck = Toggles.visuals_NameESPVisibleCheck.Value
-    end)
-    Main:AddSlider("visuals_NameESPMaxDistance", {Text = "Name ESP Max Distance", Min = 100, Max = 2000, Default = VisualsSettings.NameESPMaxDistance, Rounding = 0}):OnChanged(function()
-        VisualsSettings.NameESPMaxDistance = Options.visuals_NameESPMaxDistance.Value
-    end)
     Main:AddToggle("visuals_NameESPColor", {Text = "Name ESP Color"}):AddColorPicker("visuals_NameESPColorPicker", {Default = VisualsSettings.NameESPColor}):OnChanged(function()
         VisualsSettings.NameESPColor = Options.visuals_NameESPColorPicker.Value
-    end)
-    Main:AddToggle("visuals_TeamCheck", {Text = "Team Check", Default = VisualsSettings.TeamCheck}):OnChanged(function()
-        VisualsSettings.TeamCheck = Toggles.visuals_TeamCheck.Value
+        for player, billboard in pairs(name_esp_instances) do
+            billboard.TextLabel.TextColor3 = VisualsSettings.NameESPColor
+        end
     end)
     Main:AddToggle("visuals_VisibleOnly", {Text = "Visible Only", Default = VisualsSettings.VisibleOnly}):OnChanged(function()
         VisualsSettings.VisibleOnly = Toggles.visuals_VisibleOnly.Value
-    end)
-end
-
-local LocalPlayerChamsBOX = VisualsTab:AddRightTabbox("Local Player Chams") do
-    local Main = LocalPlayerChamsBOX:AddTab("Local Player Chams")
-    Main:AddToggle("visuals_LocalPlayerChamsEnabled", {Text = "Enabled", Default = VisualsSettings.LocalPlayerChamsEnabled}):OnChanged(function()
-        VisualsSettings.LocalPlayerChamsEnabled = Toggles.visuals_LocalPlayerChamsEnabled.Value
-        if LocalPlayer.Character then
-            if VisualsSettings.LocalPlayerChamsEnabled then
-                applyForceFieldToModel(LocalPlayer.Character, VisualsSettings.LocalPlayerChamsColor)
-            else
-                for _, desc in pairs(LocalPlayer.Character:GetDescendants()) do
-                    if desc:IsA("BasePart") then
-                        desc.Material = Enum.Material.Plastic
-                        desc.Color = Color3.fromRGB(255, 255, 255)
-                        desc.CanCollide = true
-                    end
-                end
-            end
-        end
-    end)
-    Main:AddToggle("visuals_LocalPlayerChamsColor", {Text = "Color"}):AddColorPicker("visuals_LocalPlayerChamsColorPicker", {Default = VisualsSettings.LocalPlayerChamsColor}):OnChanged(function()
-        VisualsSettings.LocalPlayerChamsColor = Options.visuals_LocalPlayerChamsColorPicker.Value
-        if VisualsSettings.LocalPlayerChamsEnabled and LocalPlayer.Character then
-            applyForceFieldToModel(LocalPlayer.Character, VisualsSettings.LocalPlayerChamsColor)
-        end
-    end)
-end
-
-local HeldWeaponChamsBOX = VisualsTab:AddRightTabbox("Held Weapon Chams") do
-    local Main = HeldWeaponChamsBOX:AddTab("Held Weapon Chams")
-    Main:AddToggle("visuals_HeldWeaponChamsEnabled", {Text = "Enabled", Default = VisualsSettings.HeldWeaponChamsEnabled}):OnChanged(function()
-        VisualsSettings.HeldWeaponChamsEnabled = Toggles.visuals_HeldWeaponChamsEnabled.Value
-        if LocalPlayer.Character then
-            for _, child in pairs(LocalPlayer.Character:GetChildren()) do
-                if child:IsA("Tool") then
-                    if VisualsSettings.HeldWeaponChamsEnabled then
-                        applyForceFieldToModel(child, VisualsSettings.HeldWeaponChamsColor)
-                    else
-                        for _, desc in pairs(child:GetDescendants()) do
-                            if desc:IsA("BasePart") then
-                                desc.Material = Enum.Material.Plastic
-                                desc.Color = Color3.fromRGB(255, 255, 255)
-                                desc.CanCollide = true
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end)
-    Main:AddToggle("visuals_HeldWeaponChamsColor", {Text = "Color"}):AddColorPicker("visuals_HeldWeaponChamsColorPicker", {Default = VisualsSettings.HeldWeaponChamsColor}):OnChanged(function()
-        VisualsSettings.HeldWeaponChamsColor = Options.visuals_HeldWeaponChamsColorPicker.Value
-        if VisualsSettings.HeldWeaponChamsEnabled and LocalPlayer.Character then
-            for _, child in pairs(LocalPlayer.Character:GetChildren()) do
-                if child:IsA("Tool") then
-                    applyForceFieldToModel(child, VisualsSettings.HeldWeaponChamsColor)
-                end
-            end
-        end
     end)
 end
 
@@ -1209,7 +1202,7 @@ local MiscBOX = MiscTab:AddLeftTabbox("Main") do
             end
         end
     end)
-    Main:AddSlider("misc_FlySpeed", {Text = "Fly Speed", Min = 10, Max = 100, Default = MiscSettings.FlySpeed, Rounding = 0}):OnChanged(function()
+    Main:AddSlider("misc_FlySpeed", {Text = "Fly Speed", Min = 10, Max = 500, Default = MiscSettings.FlySpeed, Rounding = 0}):OnChanged(function()
         MiscSettings.FlySpeed = Options.misc_FlySpeed.Value
     end)
     Main:AddToggle("misc_OrbitEnabled", {Text = "Orbit Enabled", Default = MiscSettings.OrbitEnabled}):AddKeyPicker("misc_OrbitEnabled_KeyPicker", {Default = MiscSettings.OrbitToggleKey, SyncToggleState = true, Mode = "Toggle", Text = "Orbit Enabled", NoUI = false})
@@ -1224,13 +1217,13 @@ local MiscBOX = MiscTab:AddLeftTabbox("Main") do
             end
         end
     end)
-    Main:AddSlider("misc_OrbitDistance", {Text = "Orbit Distance", Min = 5, Max = 20, Default = MiscSettings.OrbitDistance, Rounding = 1}):OnChanged(function()
+    Main:AddSlider("misc_OrbitDistance", {Text = "Orbit Distance", Min = 5, Max = 50, Default = MiscSettings.OrbitDistance, Rounding = 1}):OnChanged(function()
         MiscSettings.OrbitDistance = Options.misc_OrbitDistance.Value
     end)
-    Main:AddSlider("misc_OrbitSpinSpeed", {Text = "Orbit Spin Speed", Min = 1, Max = 10, Default = MiscSettings.OrbitSpinSpeed, Rounding = 1}):OnChanged(function()
+    Main:AddSlider("misc_OrbitSpinSpeed", {Text = "Orbit Spin Speed", Min = 1, Max = 35, Default = MiscSettings.OrbitSpinSpeed, Rounding = 1}):OnChanged(function()
         MiscSettings.OrbitSpinSpeed = Options.misc_OrbitSpinSpeed.Value
     end)
-    Main:AddSlider("misc_OrbitHeight", {Text = "Orbit Height", Min = -10, Max = 10, Default = MiscSettings.OrbitHeight, Rounding = 1}):OnChanged(function()
+    Main:AddSlider("misc_OrbitHeight", {Text = "Orbit Height", Min = -50, Max = 50, Default = MiscSettings.OrbitHeight, Rounding = 1}):OnChanged(function()
         MiscSettings.OrbitHeight = Options.misc_OrbitHeight.Value
     end)
     Main:AddToggle("misc_NoClipEnabled", {Text = "NoClip Enabled", Default = MiscSettings.NoClipEnabled}):AddKeyPicker("misc_NoClipEnabled_KeyPicker", {Default = MiscSettings.NoClipToggleKey, SyncToggleState = true, Mode = "Toggle", Text = "NoClip Enabled", NoUI = false})
@@ -1245,13 +1238,19 @@ local MiscBOX = MiscTab:AddLeftTabbox("Main") do
             end
         end
     end)
-    Main:AddToggle("misc_RapidFireEnabled", {Text = "Rapid Fire Enabled", Default = MiscSettings.RapidFireEnabled}):AddKeyPicker("misc_RapidFireEnabled_KeyPicker", {Default = "None", SyncToggleState = true, Mode = "Toggle", Text = "Rapid Fire Enabled", NoUI = false})
-    Options.misc_RapidFireEnabled_KeyPicker:OnClick(function()
-        MiscSettings.RapidFireEnabled = not MiscSettings.RapidFireEnabled
-        Toggles.misc_RapidFireEnabled:SetValue(MiscSettings.RapidFireEnabled)
+    Main:AddToggle("misc_RapidFireEnabled", {Text = "Rapid Fire Enabled", Default = MiscSettings.RapidFireEnabled}):OnChanged(function()
+        MiscSettings.RapidFireEnabled = Toggles.misc_RapidFireEnabled.Value
     end)
     Main:AddSlider("misc_RapidFireDelay", {Text = "Rapid Fire Delay", Min = 0.01, Max = 0.1, Default = MiscSettings.RapidFireDelay, Rounding = 3}):OnChanged(function()
         MiscSettings.RapidFireDelay = Options.misc_RapidFireDelay.Value
+    end)
+    Main:AddToggle("misc_SpamDanceEnabled", {Text = "Spam Dance Enabled", Default = MiscSettings.SpamDanceEnabled}):OnChanged(function()
+        MiscSettings.SpamDanceEnabled = Toggles.misc_SpamDanceEnabled.Value
+        if MiscSettings.SpamDanceEnabled then
+            playDance()
+        else
+            stopDance()
+        end
     end)
 end
 
@@ -1274,11 +1273,20 @@ local HitboxBOX = MiscTab:AddRightTabbox("Hitbox") do
             end
         end
     end)
-    Main:AddSlider("misc_HitboxExpanderSize", {Text = "Hitbox Size", Min = 1, Max = 50, Default = MiscSettings.HitboxExpanderSize, Rounding = 0}):OnChanged(function()
+    Main:AddSlider("misc_HitboxExpanderSize", {Text = "Hitbox Size", Min = 5, Max = 35, Default = MiscSettings.HitboxExpanderSize, Rounding = 0}):OnChanged(function()
         MiscSettings.HitboxExpanderSize = Options.misc_HitboxExpanderSize.Value
     end)
     Main:AddToggle("misc_HitboxExpanderColor", {Text = "Color"}):AddColorPicker("misc_HitboxExpanderColorPicker", {Default = MiscSettings.HitboxExpanderColor}):OnChanged(function()
         MiscSettings.HitboxExpanderColor = Options.misc_HitboxExpanderColorPicker.Value
+    end)
+end
+
+local TrollTab = Window:AddTab("Troll")
+local TrollBOX = TrollTab:AddLeftTabbox("Troll") do
+    local Main = TrollBOX:AddTab("Main")
+    Main:AddToggle("troll_MacanEnabled", {Text = "Macan Enabled", Default = TrollSettings.MacanEnabled}):OnChanged(function()
+        TrollSettings.MacanEnabled = Toggles.troll_MacanEnabled.Value
+        updateMacan()
     end)
 end
 
@@ -1288,29 +1296,25 @@ resume(create(function()
             if getClosestPlayer() then 
                 local Root = getClosestPlayer().Parent.PrimaryPart or getClosestPlayer()
                 local RootToViewportPoint, IsOnScreen = WorldToViewportPoint(Camera, Root.Position)
-                mouse_box.Visible = IsOnScreen
-                mouse_box.Position = Vector2.new(RootToViewportPoint.X, RootToViewportPoint.Y)
+                mouse_cross_h.Visible = IsOnScreen
+                mouse_cross_v.Visible = IsOnScreen
+                local center = Vector2.new(RootToViewportPoint.X, RootToViewportPoint.Y)
+                mouse_cross_h.From = Vector2.new(center.X - 10, center.Y)
+                mouse_cross_h.To = Vector2.new(center.X + 10, center.Y)
+                mouse_cross_v.From = Vector2.new(center.X, center.Y - 10)
+                mouse_cross_v.To = Vector2.new(center.X, center.Y + 10)
             else 
-                mouse_box.Visible = false 
-                mouse_box.Position = Vector2.new()
+                mouse_cross_h.Visible = false 
+                mouse_cross_v.Visible = false 
+                mouse_cross_h.From = Vector2.new()
+                mouse_cross_h.To = Vector2.new()
+                mouse_cross_v.From = Vector2.new()
+                mouse_cross_v.To = Vector2.new()
             end
         end
         if Toggles.Visible.Value then 
             fov_circle.Visible = Toggles.Visible.Value
-            fov_circle.Color = Options.Color.Value
             fov_circle.Position = getMousePosition()
-        end
-        -- Auto-Fire Logic
-        if SilentAimSettings.AutoFireEnabled and Toggles.aim_Enabled.Value then
-            local closestPlayer = getClosestPlayer()
-            if closestPlayer and CalculateChance(SilentAimSettings.HitChance) then
-                local character = closestPlayer.Parent
-                if character and character:FindFirstChild("Humanoid") and character.Humanoid.Health > 0 then
-                    mouse1press()
-                    wait(0.05)
-                    mouse1release()
-                end
-            end
         end
     end)
 end))
@@ -1400,15 +1404,6 @@ game.Players.PlayerRemoving:Connect(function(player)
         LegitbotSettings.Enabled = false
         Toggles.legitbot_Enabled:SetValue(false)
         legitbot_fov_circle.Visible = false
-    end
-    if player == orbitTarget then
-        orbitTarget = nil
-        MiscSettings.OrbitEnabled = false
-        Toggles.misc_OrbitEnabled:SetValue(false)
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-            LocalPlayer.Character.Humanoid.PlatformStand = false
-            LocalPlayer.Character.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
-        end
     end
     if box_esp_instances[player] then
         if VisualsSettings.BoxESPMethod == "2D" then
