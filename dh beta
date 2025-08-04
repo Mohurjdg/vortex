@@ -1,0 +1,1437 @@
+if not game:IsLoaded() then 
+    game.Loaded:Wait()
+end
+
+if not syn or not protectgui then
+    getgenv().protectgui = function() end
+end
+
+-- Settings
+local SilentAimSettings = {
+    Enabled = false,
+    ClassName = "Universal Silent Aim - Averiias, Stefanuk12, xaxa",
+    ToggleKey = "RightAlt",
+    TeamCheck = false,
+    VisibleCheck = false, 
+    TargetPart = "HumanoidRootPart",
+    SilentAimMethod = "Raycast",
+    FOVRadius = 130,
+    FOVVisible = false,
+    ShowSilentAimTarget = false, 
+    MouseHitPrediction = false,
+    MouseHitPredictionAmount = 0.165,
+    HitChance = 100,
+    AutoFireEnabled = false,
+    AutoFireToggleKey = "None"
+}
+
+local LegitbotSettings = {
+    Enabled = false,
+    Method = "Mousemove",
+    AimPart = "Head",
+    Prediction = 0.13,
+    AutoPrediction = true,
+    FOVRadius = 100,
+    CircleSides = 64,
+    CircleColor = Color3.fromRGB(255, 255, 255),
+    CircleTransparency = 0.7,
+    CircleFilled = false,
+    CircleThickness = 2,
+    CircleVisible = true,
+    TeamCheck = false,
+    Smoothness = 0.01,
+    StickyAim = false
+}
+
+local VisualsSettings = {
+    BoxESPEnabled = false,
+    BoxESPMethod = "2D",
+    SkeletonESPEnabled = false,
+    HealthBarEnabled = false,
+    NameESPEnabled = false,
+    NameESPTeamCheck = false,
+    NameESPVisibleCheck = false,
+    NameESPMaxDistance = 1000,
+    NameESPColor = Color3.fromRGB(255, 255, 255),
+    TeamCheck = false,
+    VisibleOnly = false,
+    LocalPlayerChamsEnabled = false,
+    LocalPlayerChamsColor = Color3.fromRGB(209, 206, 255),
+    HeldWeaponChamsEnabled = false,
+    HeldWeaponChamsColor = Color3.fromRGB(209, 206, 255)
+}
+
+local MiscSettings = {
+    FlyEnabled = false,
+    FlyMethod = "PC",
+    FlySpeed = 50,
+    OrbitEnabled = false,
+    OrbitToggleKey = "None",
+    OrbitDistance = 10,
+    OrbitSpinSpeed = 2,
+    OrbitHeight = 0,
+    NoClipEnabled = false,
+    NoClipToggleKey = "None",
+    HitboxExpanderEnabled = false,
+    HitboxExpanderSize = 10,
+    HitboxExpanderColor = Color3.fromRGB(209, 206, 255),
+    HitboxExpanderTransparency = 0.7,
+    RapidFireEnabled = false, -- New: Toggle for rapid fire
+    RapidFireDelay = 0.01 -- New: Delay between shots (adjustable)
+}
+
+-- Variables
+getgenv().SilentAimSettings = SilentAimSettings
+getgenv().LegitbotSettings = LegitbotSettings
+getgenv().VisualsSettings = VisualsSettings
+getgenv().MiscSettings = MiscSettings
+local MainFileName = "UniversalSilentAim"
+local SelectedFile, FileToSave = "", ""
+
+local Camera = workspace.CurrentCamera
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local GuiService = game:GetService("GuiService")
+local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
+
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+
+local GetChildren = game.GetChildren
+local GetPlayers = Players.GetPlayers
+local WorldToScreen = Camera.WorldToScreenPoint
+local WorldToViewportPoint = Camera.WorldToViewportPoint
+local GetPartsObscuringTarget = Camera.GetPartsObscuringTarget
+local FindFirstChild = game.FindFirstChild
+local RenderStepped = RunService.RenderStepped
+local GuiInset = GuiService.GetGuiInset
+local GetMouseLocation = UserInputService.GetMouseLocation
+
+local resume = coroutine.resume 
+local create = coroutine.create
+
+local ValidTargetParts = {"Head", "HumanoidRootPart"}
+local PredictionAmount = 0.165
+
+local mouse_box = Drawing.new("Square")
+mouse_box.Visible = false 
+mouse_box.ZIndex = 999 
+mouse_box.Color = Color3.fromRGB(54, 57, 241)
+mouse_box.Thickness = 20 
+mouse_box.Size = Vector2.new(20, 20)
+mouse_box.Filled = true 
+
+local fov_circle = Drawing.new("Circle")
+fov_circle.Thickness = 1
+fov_circle.NumSides = 100
+fov_circle.Radius = 180
+fov_circle.Filled = false
+fov_circle.Visible = false
+fov_circle.ZIndex = 999
+fov_circle.Transparency = 1
+fov_circle.Color = Color3.fromRGB(54, 57, 241)
+
+local legitbot_fov_circle = Drawing.new("Circle")
+legitbot_fov_circle.Thickness = 1
+legitbot_fov_circle.NumSides = LegitbotSettings.CircleSides
+legitbot_fov_circle.Radius = LegitbotSettings.FOVRadius
+legitbot_fov_circle.Filled = LegitbotSettings.CircleFilled
+legitbot_fov_circle.Visible = false
+legitbot_fov_circle.ZIndex = 998
+legitbot_fov_circle.Transparency = LegitbotSettings.CircleTransparency
+legitbot_fov_circle.Color = LegitbotSettings.CircleColor
+
+local box_esp_instances = {}
+local health_bar_instances = {}
+local skeleton_esp_instances = {}
+local name_esp_instances = {}
+
+local ExpectedArguments = {
+    FindPartOnRayWithIgnoreList = {
+        ArgCountRequired = 3,
+        Args = {
+            "Instance", "Ray", "table", "boolean", "boolean"
+        }
+    },
+    FindPartOnRayWithWhitelist = {
+        ArgCountRequired = 3,
+        Args = {
+            "Instance", "Ray", "table", "boolean"
+        }
+    },
+    FindPartOnRay = {
+        ArgCountRequired = 2,
+        Args = {
+            "Instance", "Ray", "Instance", "boolean", "boolean"
+        }
+    },
+    Raycast = {
+        ArgCountRequired = 3,
+        Args = {
+            "Instance", "Vector3", "Vector3", "RaycastParams"
+        }
+    }
+}
+
+function CalculateChance(Percentage)
+    Percentage = math.floor(Percentage)
+    local chance = math.floor(Random.new().NextNumber(Random.new(), 0, 1) * 100) / 100
+    return chance <= Percentage / 100
+end
+
+-- File handling
+do 
+    if not isfolder(MainFileName) then 
+        makefolder(MainFileName)
+    end
+    
+    if not isfolder(string.format("%s/%s", MainFileName, tostring(game.PlaceId))) then 
+        makefolder(string.format("%s/%s", MainFileName, tostring(game.PlaceId)))
+    end
+end
+
+local Files = listfiles(string.format("%s/%s", "UniversalSilentAim", tostring(game.PlaceId)))
+
+-- Functions
+local function GetFiles()
+    local out = {}
+    for i = 1, #Files do
+        local file = Files[i]
+        if file:sub(-4) == '.lua' then
+            local pos = file:find('.lua', 1, true)
+            local start = pos
+            local char = file:sub(pos, pos)
+            while char ~= '/' and char ~= '\\' and char ~= '' do
+                pos = pos - 1
+                char = file:sub(pos, pos)
+            end
+            if char == '/' or char == '\\' then
+                table.insert(out, file:sub(pos + 1, start - 1))
+            end
+        end
+    end
+    return out
+end
+
+local function UpdateFile(FileName)
+    assert(FileName, "FileName must be a string")
+    local ConfigData = {
+        Enabled = SilentAimSettings.Enabled,
+        TeamCheck = SilentAimSettings.TeamCheck,
+        VisibleCheck = SilentAimSettings.VisibleCheck,
+        TargetPart = SilentAimSettings.TargetPart,
+        SilentAimMethod = SilentAimSettings.SilentAimMethod,
+        FOVRadius = SilentAimSettings.FOVRadius,
+        FOVVisible = SilentAimSettings.FOVVisible,
+        ShowSilentAimTarget = SilentAimSettings.ShowSilentAimTarget,
+        MouseHitPrediction = SilentAimSettings.MouseHitPrediction,
+        MouseHitPredictionAmount = SilentAimSettings.MouseHitPredictionAmount,
+        HitChance = SilentAimSettings.HitChance,
+        AutoFireEnabled = SilentAimSettings.AutoFireEnabled,
+        NoClipEnabled = MiscSettings.NoClipEnabled,
+        HitboxExpanderEnabled = MiscSettings.HitboxExpanderEnabled,
+        HitboxExpanderSize = MiscSettings.HitboxExpanderSize,
+        HitboxExpanderColor = MiscSettings.HitboxExpanderColor,
+        HitboxExpanderTransparency = MiscSettings.HitboxExpanderTransparency,
+        LocalPlayerChamsEnabled = VisualsSettings.LocalPlayerChamsEnabled,
+        LocalPlayerChamsColor = VisualsSettings.LocalPlayerChamsColor,
+        HeldWeaponChamsEnabled = VisualsSettings.HeldWeaponChamsEnabled,
+        HeldWeaponChamsColor = VisualsSettings.HeldWeaponChamsColor,
+        RapidFireEnabled = MiscSettings.RapidFireEnabled,
+        RapidFireDelay = MiscSettings.RapidFireDelay
+    }
+    writefile(string.format("%s/%s/%s.lua", MainFileName, tostring(game.PlaceId), FileName), HttpService:JSONEncode(ConfigData))
+end
+
+local function LoadFile(FileName)
+    assert(FileName, "FileName must be a string")
+    local File = string.format("%s/%s/%s.lua", MainFileName, tostring(game.PlaceId), FileName)
+    local ConfigData = HttpService:JSONDecode(readfile(File))
+    for Index, Value in next, ConfigData do
+        SilentAimSettings[Index] = Value
+        MiscSettings[Index] = Value
+        VisualsSettings[Index] = Value
+    end
+    Toggles.TeamCheck:SetValue(SilentAimSettings.TeamCheck)
+    Toggles.VisibleCheck:SetValue(SilentAimSettings.VisibleCheck)
+    Options.TargetPart:SetValue(SilentAimSettings.TargetPart)
+    Options.Method:SetValue(SilentAimSettings.SilentAimMethod)
+    Toggles.Visible:SetValue(SilentAimSettings.FOVVisible)
+    Options.Radius:SetValue(SilentAimSettings.FOVRadius)
+    Toggles.MousePosition:SetValue(SilentAimSettings.ShowSilentAimTarget)
+    Toggles.Prediction:SetValue(SilentAimSettings.MouseHitPrediction)
+    Options.Amount:SetValue(SilentAimSettings.MouseHitPredictionAmount)
+    Options.HitChance:SetValue(SilentAimSettings.HitChance)
+    Toggles.autofire_Enabled:SetValue(SilentAimSettings.AutoFireEnabled)
+    Toggles.misc_NoClipEnabled:SetValue(MiscSettings.NoClipEnabled)
+    Toggles.misc_HitboxExpanderEnabled:SetValue(MiscSettings.HitboxExpanderEnabled)
+    Options.misc_HitboxExpanderSize:SetValue(MiscSettings.HitboxExpanderSize)
+    Options.misc_HitboxExpanderColor:SetValue(MiscSettings.HitboxExpanderColor)
+    Toggles.visuals_LocalPlayerChamsEnabled:SetValue(VisualsSettings.LocalPlayerChamsEnabled)
+    Options.visuals_LocalPlayerChamsColor:SetValue(VisualsSettings.LocalPlayerChamsColor)
+    Toggles.visuals_HeldWeaponChamsEnabled:SetValue(VisualsSettings.HeldWeaponChamsEnabled)
+    Options.visuals_HeldWeaponChamsColor:SetValue(VisualsSettings.HeldWeaponChamsColor)
+    Toggles.misc_RapidFireEnabled:SetValue(MiscSettings.RapidFireEnabled)
+    Options.misc_RapidFireDelay:SetValue(MiscSettings.RapidFireDelay)
+end
+
+local function getPositionOnScreen(Vector)
+    local Vec3, OnScreen = WorldToScreen(Camera, Vector)
+    return Vector2.new(Vec3.X, Vec3.Y), OnScreen
+end
+
+local function ValidateArguments(Args, RayMethod)
+    local Matches = 0
+    if #Args < RayMethod.ArgCountRequired then
+        return false
+    end
+    for Pos, Argument in next, Args do
+        if typeof(Argument) == RayMethod.Args[Pos] then
+            Matches = Matches + 1
+        end
+    end
+    return Matches >= RayMethod.ArgCountRequired
+end
+
+local function getDirection(Origin, Position)
+    return (Position - Origin).Unit * 1000
+end
+
+local function getMousePosition()
+    return GetMouseLocation(UserInputService)
+end
+
+local function IsPlayerVisible(Player)
+    local PlayerCharacter = Player.Character
+    local LocalPlayerCharacter = LocalPlayer.Character
+    if not (PlayerCharacter or LocalPlayerCharacter) then return false end 
+    local PlayerRoot = FindFirstChild(PlayerCharacter, "HumanoidRootPart")
+    if not PlayerRoot then return false end 
+    local CastPoints = {PlayerRoot.Position}
+    local IgnoreList = {LocalPlayerCharacter, PlayerCharacter}
+    local ObscuringObjects = #GetPartsObscuringTarget(Camera, CastPoints, IgnoreList)
+    return ObscuringObjects == 0
+end
+
+local function getClosestPlayer()
+    if not SilentAimSettings.TargetPart then return end
+    local Closest
+    local DistanceToMouse
+    for _, Player in next, GetPlayers(Players) do
+        if Player == LocalPlayer then continue end
+        if SilentAimSettings.TeamCheck and Player.Team == LocalPlayer.Team then continue end
+        local Character = Player.Character
+        if not Character then continue end
+        local HumanoidRootPart = FindFirstChild(Character, "HumanoidRootPart")
+        local Humanoid = FindFirstChild(Character, "Humanoid")
+        if not HumanoidRootPart or not Humanoid or Humanoid and Humanoid.Health <= 0 then continue end
+        if SilentAimSettings.VisibleCheck and not IsPlayerVisible(Player) then continue end
+        local ScreenPosition, OnScreen = getPositionOnScreen(HumanoidRootPart.Position)
+        if not OnScreen then continue end
+        local Distance = (getMousePosition() - ScreenPosition).Magnitude
+        if Distance <= (DistanceToMouse or SilentAimSettings.FOVRadius or 2000) then
+            Closest = ((SilentAimSettings.TargetPart == "Random" and Character[ValidTargetParts[math.random(1, #ValidTargetParts)]]) or Character[SilentAimSettings.TargetPart])
+            DistanceToMouse = Distance
+        end
+    end
+    return Closest
+end
+
+local function getClosestPlayerForLegitbot()
+    if LegitbotSettings.StickyAim and legitbotTarget and legitbotTarget.Character and legitbotTarget.Character:FindFirstChild(LegitbotSettings.AimPart) and legitbotTarget.Character:FindFirstChild("Humanoid") and legitbotTarget.Character.Humanoid.Health > 0 then
+        if LegitbotSettings.TeamCheck and legitbotTarget.Team == LocalPlayer.Team then
+            legitbotTarget = nil
+            return nil
+        end
+        local screenPos, onScreen = WorldToViewportPoint(Camera, legitbotTarget.Character[LegitbotSettings.AimPart].Position)
+        if onScreen then
+            local distance = (Vector2.new(screenPos.X, screenPos.Y) - getMousePosition()).Magnitude
+            if distance <= LegitbotSettings.FOVRadius then
+                return legitbotTarget
+            end
+        end
+        legitbotTarget = nil
+    end
+    local closestPlayer = nil
+    local closestDistance = LegitbotSettings.FOVRadius
+    local mousePos = getMousePosition()
+    for _, player in next, GetPlayers(Players) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild(LegitbotSettings.AimPart) then
+            if LegitbotSettings.TeamCheck and player.Team == LocalPlayer.Team then continue end
+            local targetPart = player.Character[LegitbotSettings.AimPart]
+            local screenPos, onScreen = WorldToViewportPoint(Camera, targetPart.Position)
+            if onScreen then
+                local distance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                if distance < closestDistance then
+                    closestDistance = distance
+                    closestPlayer = player
+                end
+            end
+        end
+    end
+    return closestPlayer
+end
+
+local function getClosestPlayerToCenter()
+    local closestPlayer = nil
+    local closestDistance = math.huge
+    local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    for _, player in next, GetPlayers(Players) do
+        if player == LocalPlayer then continue end
+        if SilentAimSettings.TeamCheck and player.Team == LocalPlayer.Team then continue end
+        local character = player.Character
+        if not character then continue end
+        local humanoidRootPart = FindFirstChild(character, "HumanoidRootPart")
+        local humanoid = FindFirstChild(character, "Humanoid")
+        if not humanoidRootPart or not humanoid or humanoid.Health <= 0 then continue end
+        local screenPos, onScreen = WorldToViewportPoint(Camera, humanoidRootPart.Position)
+        if onScreen then
+            local distance = (screenCenter - Vector2.new(screenPos.X, screenPos.Y)).Magnitude
+            if distance < closestDistance then
+                closestDistance = distance
+                closestPlayer = player
+            end
+        end
+    end
+    return closestPlayer
+end
+
+local function getPing()
+    local ping = LocalPlayer:GetNetworkPing() * 1000
+    return ping
+end
+
+local function calculatePrediction()
+    if not LegitbotSettings.AutoPrediction then
+        return 0
+    end
+    local ping = getPing()
+    return math.clamp(0.1 + (ping / 1000 * 0.1), 0.1, 0.2)
+end
+
+local function lerp(a, b, t)
+    return a + (b - a) * t
+end
+
+local function lerpCFrame(current, target, alpha)
+    return current:Lerp(target, alpha)
+end
+
+-- Name ESP
+local function createNameESP(player)
+    if player == LocalPlayer or not player.Character or not player.Character:FindFirstChild("Head") then return end
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "NameESP"
+    billboard.Adornee = player.Character.Head
+    billboard.Size = UDim2.new(0, 100, 0, 20)
+    billboard.StudsOffset = Vector3.new(0, 2, 0)
+    billboard.AlwaysOnTop = true
+    local textLabel = Instance.new("TextLabel")
+    textLabel.Size = UDim2.new(1, 0, 1, 0)
+    textLabel.BackgroundTransparency = 1
+    textLabel.TextColor3 = VisualsSettings.NameESPColor
+    textLabel.Text = player.Name
+    textLabel.TextSize = 14
+    textLabel.Font = Enum.Font.SourceSans
+    textLabel.Parent = billboard
+    billboard.Parent = player.Character.Head
+    name_esp_instances[player] = billboard
+end
+
+-- Box ESP, Skeleton ESP, Health Bar
+local function createBoxESP(player)
+    if player == LocalPlayer or not player.Character then return end
+    local box = {}
+    if VisualsSettings.BoxESPMethod == "Corner" then
+        for i = 1, 8 do
+            box[i] = Drawing.new("Line")
+            box[i].Thickness = 1
+            box[i].Transparency = 1
+            box[i].Color = Color3.fromRGB(255, 255, 255)
+            box[i].ZIndex = 997
+        end
+    elseif VisualsSettings.BoxESPMethod == "3D" then
+        for i = 1, 12 do
+            box[i] = Drawing.new("Line")
+            box[i].Thickness = 1
+            box[i].Transparency = 1
+            box[i].Color = Color3.fromRGB(255, 255, 255)
+            box[i].ZIndex = 997
+        end
+    else -- 2D
+        box[1] = Drawing.new("Square")
+        box[1].Thickness = 1
+        box[1].Filled = false
+        box[1].Transparency = 1
+        box[1].Color = Color3.fromRGB(255, 255, 255)
+        box[1].ZIndex = 997
+    end
+    box_esp_instances[player] = box
+end
+
+local function createHealthBar(player)
+    if player == LocalPlayer or not player.Character then return end
+    local bar = Drawing.new("Line")
+    bar.Thickness = 2
+    bar.Transparency = 1
+    bar.ZIndex = 996
+    health_bar_instances[player] = bar
+end
+
+local function createSkeletonESP(player)
+    if player == LocalPlayer or not player.Character then return end
+    local skeleton = {}
+    local bones = {
+        {"Head", "UpperTorso"},
+        {"UpperTorso", "LowerTorso"},
+        {"LowerTorso", "LeftUpperLeg"},
+        {"LowerTorso", "RightUpperLeg"},
+        {"LeftUpperLeg", "LeftLowerLeg"},
+        {"RightUpperLeg", "RightLowerLeg"},
+        {"UpperTorso", "LeftUpperArm"},
+        {"UpperTorso", "RightUpperArm"},
+        {"LeftUpperArm", "LeftLowerArm"},
+        {"RightUpperArm", "RightLowerArm"}
+    }
+    for i, _ in ipairs(bones) do
+        skeleton[i] = Drawing.new("Line")
+        skeleton[i].Thickness = 1
+        skeleton[i].Transparency = 1
+        skeleton[i].Color = Color3.fromRGB(255, 255, 255)
+        skeleton[i].ZIndex = 995
+    end
+    skeleton_esp_instances[player] = {bones = bones, lines = skeleton}
+end
+
+local function getCharacterSize(character)
+    local humanoid = character:FindFirstChild("Humanoid")
+    local root = character:FindFirstChild("HumanoidRootPart")
+    if humanoid and root then
+        local size = character:GetExtentsSize()
+        return size.X * 1.5, size.Y * 1.5, size.Z * 1.5
+    end
+    return 4, 6, 2
+end
+
+-- Hitbox Expander
+local function updateHitboxExpander()
+    if not MiscSettings.HitboxExpanderEnabled then return end
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local humanoidRootPart = player.Character.HumanoidRootPart
+            pcall(function()
+                humanoidRootPart.Size = Vector3.new(MiscSettings.HitboxExpanderSize, MiscSettings.HitboxExpanderSize, MiscSettings.HitboxExpanderSize)
+                humanoidRootPart.Transparency = MiscSettings.HitboxExpanderTransparency
+                humanoidRootPart.Color = MiscSettings.HitboxExpanderColor
+                humanoidRootPart.Material = Enum.Material.ForceField
+                humanoidRootPart.CanCollide = false
+            end)
+        end
+    end
+end
+
+-- Local Player and Held Weapon Chams
+local function applyForceFieldToModel(model, color)
+    for _, desc in pairs(model:GetDescendants()) do
+        if desc:IsA("BasePart") then
+            desc.Material = Enum.Material.ForceField
+            desc.Color = color
+            desc.CanCollide = false
+        end
+    end
+end
+
+local function setupCharacterChams(character)
+    if VisualsSettings.LocalPlayerChamsEnabled then
+        applyForceFieldToModel(character, VisualsSettings.LocalPlayerChamsColor)
+    end
+    if VisualsSettings.HeldWeaponChamsEnabled then
+        character.ChildAdded:Connect(function(child)
+            if child:IsA("Tool") then
+                applyForceFieldToModel(child, VisualsSettings.HeldWeaponChamsColor)
+            end
+        end)
+        for _, child in pairs(character:GetChildren()) do
+            if child:IsA("Tool") then
+                applyForceFieldToModel(child, VisualsSettings.HeldWeaponChamsColor)
+            end
+        end
+    end
+end
+
+-- Initialize Local Player Chams
+LocalPlayer.CharacterAdded:Connect(function(character)
+    setupCharacterChams(character)
+end)
+
+if LocalPlayer.Character then
+    setupCharacterChams(LocalPlayer.Character)
+end
+
+local function updateVisuals()
+    for player, box in pairs(box_esp_instances) do
+        if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") or (VisualsSettings.TeamCheck and player.Team == LocalPlayer.Team) or (VisualsSettings.VisibleOnly and not IsPlayerVisible(player)) then
+            if VisualsSettings.BoxESPMethod == "2D" then
+                box[1].Visible = false
+                box[1]:Remove()
+            else
+                for _, line in ipairs(box) do
+                    line.Visible = false
+                    line:Remove()
+                end
+            end
+            box_esp_instances[player] = nil
+        else
+            local root = player.Character.HumanoidRootPart
+            local humanoid = player.Character:FindFirstChild("Humanoid")
+            if humanoid and humanoid.Health <= 0 then
+                if VisualsSettings.BoxESPMethod == "2D" then
+                    box[1].Visible = false
+                    box[1]:Remove()
+                else
+                    for _, line in ipairs(box) do
+                        line.Visible = false
+                        line:Remove()
+                    end
+                end
+                box_esp_instances[player] = nil
+            else
+                local screenPos, onScreen = WorldToViewportPoint(Camera, root.Position)
+                if onScreen then
+                    local width, height, depth = getCharacterSize(player.Character)
+                    local scale = 1 / (screenPos.Z * math.tan(math.rad(Camera.FieldOfView * 0.5)) * 2) * 1000
+                    local w, h = width * scale, height * scale
+                    if VisualsSettings.BoxESPMethod == "Corner" then
+                        local cornerLength = 0.2 * w
+                        local positions = {
+                            {Vector2.new(screenPos.X - w / 2, screenPos.Y - h / 2), Vector2.new(screenPos.X - w / 2 + cornerLength, screenPos.Y - h / 2)},
+                            {Vector2.new(screenPos.X - w / 2, screenPos.Y - h / 2), Vector2.new(screenPos.X - w / 2, screenPos.Y - h / 2 + cornerLength)},
+                            {Vector2.new(screenPos.X + w / 2 - cornerLength, screenPos.Y - h / 2), Vector2.new(screenPos.X + w / 2, screenPos.Y - h / 2)},
+                            {Vector2.new(screenPos.X + w / 2, screenPos.Y - h / 2), Vector2.new(screenPos.X + w / 2, screenPos.Y - h / 2 + cornerLength)},
+                            {Vector2.new(screenPos.X - w / 2, screenPos.Y + h / 2 - cornerLength), Vector2.new(screenPos.X - w / 2, screenPos.Y + h / 2)},
+                            {Vector2.new(screenPos.X - w / 2, screenPos.Y + h / 2), Vector2.new(screenPos.X - w / 2 + cornerLength, screenPos.Y + h / 2)},
+                            {Vector2.new(screenPos.X + w / 2 - cornerLength, screenPos.Y + h / 2), Vector2.new(screenPos.X + w / 2, screenPos.Y + h / 2)},
+                            {Vector2.new(screenPos.X + w / 2, screenPos.Y + h / 2 - cornerLength), Vector2.new(screenPos.X + w / 2, screenPos.Y + h / 2)}
+                        }
+                        for i, line in ipairs(box) do
+                            line.From = positions[i][1]
+                            line.To = positions[i][2]
+                            line.Visible = VisualsSettings.BoxESPEnabled
+                        end
+                    elseif VisualsSettings.BoxESPMethod == "3D" then
+                        local corners = {
+                            root.Position + Vector3.new(-width / 2, height / 2, -depth / 2),
+                            root.Position + Vector3.new(width / 2, height / 2, -depth / 2),
+                            root.Position + Vector3.new(width / 2, height / 2, depth / 2),
+                            root.Position + Vector3.new(-width / 2, height / 2, depth / 2),
+                            root.Position + Vector3.new(-width / 2, -height / 2, -depth / 2),
+                            root.Position + Vector3.new(width / 2, -height / 2, -depth / 2),
+                            root.Position + Vector3.new(width / 2, -height / 2, depth / 2),
+                            root.Position + Vector3.new(-width / 2, -height / 2, depth / 2)
+                        }
+                        local lines = {
+                            {1, 2}, {2, 3}, {3, 4}, {4, 1},
+                            {5, 6}, {6, 7}, {7, 8}, {8, 5},
+                            {1, 5}, {2, 6}, {3, 7}, {4, 8}
+                        }
+                        for i, line in ipairs(box) do
+                            local fromPos, fromOnScreen = WorldToViewportPoint(Camera, corners[lines[i][1]])
+                            local toPos, toOnScreen = WorldToViewportPoint(Camera, corners[lines[i][2]])
+                            line.From = Vector2.new(fromPos.X, fromPos.Y)
+                            line.To = Vector2.new(toPos.X, toPos.Y)
+                            line.Visible = VisualsSettings.BoxESPEnabled and fromOnScreen and toOnScreen
+                        end
+                    else -- 2D
+                        box[1].Size = Vector2.new(w, h)
+                        box[1].Position = Vector2.new(screenPos.X - w / 2, screenPos.Y - h / 2)
+                        box[1].Visible = VisualsSettings.BoxESPEnabled
+                    end
+                else
+                    if VisualsSettings.BoxESPMethod == "2D" then
+                        box[1].Visible = false
+                    else
+                        for _, line in ipairs(box) do
+                            line.Visible = false
+                        end
+                    end
+                end
+            end
+        end
+    end
+    for player, bar in pairs(health_bar_instances) do
+        if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") or not player.Character:FindFirstChild("Humanoid") or (VisualsSettings.TeamCheck and player.Team == LocalPlayer.Team) or (VisualsSettings.VisibleOnly and not IsPlayerVisible(player)) then
+            bar.Visible = false
+            health_bar_instances[player] = nil
+            bar:Remove()
+        else
+            local root = player.Character.HumanoidRootPart
+            local humanoid = player.Character.Humanoid
+            if humanoid.Health <= 0 then
+                bar.Visible = false
+                health_bar_instances[player] = nil
+                bar:Remove()
+            else
+                local screenPos, onScreen = WorldToViewportPoint(Camera, root.Position)
+                if onScreen then
+                    local width, height = getCharacterSize(player.Character)
+                    local scale = 1 / (screenPos.Z * math.tan(math.rad(Camera.FieldOfView * 0.5)) * 2) * 1000
+                    local w, h = width * scale, height * scale
+                    local healthFraction = humanoid.Health / humanoid.MaxHealth
+                    local barHeight = h * healthFraction
+                    bar.From = Vector2.new(screenPos.X - w / 2 - 2, screenPos.Y + h / 2)
+                    bar.To = Vector2.new(screenPos.X - w / 2 - 2, screenPos.Y + h / 2 - barHeight)
+                    bar.Color = Color3.fromRGB(255 * (1 - healthFraction), 255 * healthFraction, 0)
+                    bar.Visible = VisualsSettings.HealthBarEnabled
+                else
+                    bar.Visible = false
+                end
+            end
+        end
+    end
+    for player, skeleton in pairs(skeleton_esp_instances) do
+        if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") or not player.Character:FindFirstChild("Humanoid") or (VisualsSettings.TeamCheck and player.Team == LocalPlayer.Team) or (VisualsSettings.VisibleOnly and not IsPlayerVisible(player)) then
+            for _, line in ipairs(skeleton.lines) do
+                line.Visible = false
+                line:Remove()
+            end
+            skeleton_esp_instances[player] = nil
+        else
+            local humanoid = player.Character.Humanoid
+            if humanoid.Health <= 0 then
+                for _, line in ipairs(skeleton.lines) do
+                    line.Visible = false
+                    line:Remove()
+                end
+                skeleton_esp_instances[player] = nil
+            else
+                local _, onScreen = WorldToViewportPoint(Camera, player.Character.HumanoidRootPart.Position)
+                for i, bone in ipairs(skeleton.bones) do
+                    local fromPart = player.Character:FindFirstChild(bone[1])
+                    local toPart = player.Character:FindFirstChild(bone[2])
+                    if fromPart and toPart then
+                        local fromPos, fromOnScreen = WorldToViewportPoint(Camera, fromPart.Position)
+                        local toPos, toOnScreen = WorldToViewportPoint(Camera, toPart.Position)
+                        skeleton.lines[i].From = Vector2.new(fromPos.X, fromPos.Y)
+                        skeleton.lines[i].To = Vector2.new(toPos.X, toPos.Y)
+                        skeleton.lines[i].Visible = VisualsSettings.SkeletonESPEnabled and onScreen and fromOnScreen and toOnScreen
+                    else
+                        skeleton.lines[i].Visible = false
+                    end
+                end
+            end
+        end
+    end
+    for player, billboard in pairs(name_esp_instances) do
+        if not player.Character or not player.Character:FindFirstChild("Head") or not player.Character:FindFirstChild("Humanoid") or (VisualsSettings.NameESPTeamCheck and player.Team == LocalPlayer.Team) or (VisualsSettings.NameESPVisibleCheck and not IsPlayerVisible(player)) then
+            billboard:Destroy()
+            name_esp_instances[player] = nil
+        else
+            local humanoid = player.Character.Humanoid
+            if humanoid.Health <= 0 then
+                billboard:Destroy()
+                name_esp_instances[player] = nil
+            else
+                local root = player.Character.HumanoidRootPart
+                local distance = (Camera.CFrame.Position - root.Position).Magnitude
+                if distance > VisualsSettings.NameESPMaxDistance then
+                    billboard.Enabled = false
+                else
+                    billboard.Enabled = VisualsSettings.NameESPEnabled
+                    billboard.TextLabel.TextColor3 = VisualsSettings.NameESPColor
+                end
+            end
+        end
+    end
+end
+
+-- Fly Logic
+local function updateFly()
+    if not MiscSettings.FlyEnabled or not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
+    local root = LocalPlayer.Character.HumanoidRootPart
+    local humanoid = LocalPlayer.Character.Humanoid
+    humanoid.PlatformStand = true
+    root.Velocity = Vector3.new(0, 0, 0)
+    local direction = Vector3.new(0, 0, 0)
+    if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+        direction = direction + Camera.CFrame.LookVector * MiscSettings.FlySpeed
+    end
+    if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+        direction = direction - Camera.CFrame.LookVector * MiscSettings.FlySpeed
+    end
+    if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+        direction = direction - Camera.CFrame.RightVector * MiscSettings.FlySpeed
+    end
+    if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+        direction = direction + Camera.CFrame.RightVector * MiscSettings.FlySpeed
+    end
+    if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+        direction = direction + Vector3.new(0, MiscSettings.FlySpeed, 0)
+    end
+    if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+        direction = direction - Vector3.new(0, MiscSettings.FlySpeed, 0)
+    end
+    root.Velocity = direction
+end
+
+-- NoClip Logic
+local function updateNoClip()
+    if not MiscSettings.NoClipEnabled or not LocalPlayer.Character then return end
+    for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = false
+        end
+    end
+end
+
+-- Orbit Logic
+local orbitTarget = nil
+local orbitAngle = 0
+local function updateOrbit()
+    if not MiscSettings.OrbitEnabled or not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        orbitTarget = nil
+        return
+    end
+    local root = LocalPlayer.Character.HumanoidRootPart
+    local humanoid = LocalPlayer.Character.Humanoid
+    humanoid.PlatformStand = true
+    if not orbitTarget or not orbitTarget.Character or not orbitTarget.Character:FindFirstChild("HumanoidRootPart") or orbitTarget.Character:FindFirstChild("Humanoid").Health <= 0 then
+        orbitTarget = getClosestPlayerToCenter()
+        if not orbitTarget or not orbitTarget.Character or not orbitTarget.Character:FindFirstChild("HumanoidRootPart") then
+            humanoid.PlatformStand = false
+            root.Velocity = Vector3.new(0, 0, 0)
+            return
+        end
+        local targetPos = orbitTarget.Character.HumanoidRootPart.Position
+        root.CFrame = CFrame.new(targetPos + Vector3.new(MiscSettings.OrbitDistance, MiscSettings.OrbitHeight, 0))
+        orbitAngle = 0
+    end
+    local targetPos = orbitTarget.Character.HumanoidRootPart.Position
+    orbitAngle = orbitAngle + MiscSettings.OrbitSpinSpeed * RunService.Heartbeat:Wait()
+    local offset = Vector3.new(
+        math.cos(orbitAngle) * MiscSettings.OrbitDistance,
+        MiscSettings.OrbitHeight,
+        math.sin(orbitAngle) * MiscSettings.OrbitDistance
+    )
+    root.CFrame = CFrame.new(targetPos + offset, targetPos)
+    root.Velocity = Vector3.new(0, 0, 0)
+end
+
+-- Rapid Fire Logic
+local is_firing = false
+local utility = {}
+utility.get_gun = function()
+    if LocalPlayer.Character then
+        for _, tool in next, LocalPlayer.Character:GetChildren() do
+            if tool:IsA("Tool") and tool:FindFirstChild("Ammo") then
+                return tool
+            end
+        end
+    end
+    return nil
+end
+
+utility.rapid = function(tool)
+    if tool then
+        tool:Activate()
+    end
+end
+
+UserInputService.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 and MiscSettings.RapidFireEnabled then
+        local gun = utility.get_gun()
+        if gun and not is_firing then
+            is_firing = true
+            while is_firing do
+                utility.rapid(gun)
+                task.wait(MiscSettings.RapidFireDelay)
+            end
+        end
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        is_firing = false
+    end
+end)
+
+-- Legitbot Logic
+local legitbotTarget = nil
+RunService.RenderStepped:Connect(function()
+    legitbot_fov_circle.Position = getMousePosition()
+    if LegitbotSettings.Enabled then
+        if not legitbotTarget then
+            legitbotTarget = getClosestPlayerForLegitbot()
+        end
+        if legitbotTarget and legitbotTarget.Character and legitbotTarget.Character:FindFirstChild(LegitbotSettings.AimPart) then
+            local targetPart = legitbotTarget.Character[LegitbotSettings.AimPart]
+            local predictedPos = targetPart.Position
+            if LegitbotSettings.AutoPrediction then
+                local prediction = calculatePrediction()
+                local velocity = targetPart.Velocity
+                predictedPos = targetPart.Position + (velocity * prediction)
+            end
+            local screenPos, onScreen = WorldToViewportPoint(Camera, predictedPos)
+            if onScreen or LegitbotSettings.StickyAim then
+                if LegitbotSettings.Method == "Mousemove" then
+                    local currentMousePos = getMousePosition()
+                    local targetX = screenPos.X
+                    local targetY = screenPos.Y
+                    local currentX, currentY = currentMousePos.X, currentMousePos.Y
+                    local newX = lerp(currentX, targetX, LegitbotSettings.Smoothness)
+                    local newY = lerp(currentY, targetY, LegitbotSettings.Smoothness)
+                    local deltaX = newX - currentX
+                    local deltaY = newY - currentY
+                    mousemoverel(deltaX, deltaY)
+                elseif LegitbotSettings.Method == "Camlock" then
+                    local newCFrame = CFrame.new(Camera.CFrame.Position, predictedPos)
+                    Camera.CFrame = lerpCFrame(Camera.CFrame, newCFrame, LegitbotSettings.Smoothness)
+                end
+            end
+        end
+    end
+    updateVisuals()
+    updateFly()
+    updateNoClip()
+    updateHitboxExpander()
+end)
+
+RunService.Heartbeat:Connect(function()
+    updateOrbit()
+    if LegitbotSettings.Enabled and legitbotTarget and not legitbotTarget.Character then
+        legitbotTarget = nil
+        LegitbotSettings.Enabled = false
+        Toggles.legitbot_Enabled:SetValue(false)
+        legitbot_fov_circle.Visible = false
+    end
+    for _, player in next, GetPlayers(Players) do
+        if player ~= LocalPlayer and player.Character then
+            if VisualsSettings.BoxESPEnabled and not box_esp_instances[player] then
+                createBoxESP(player)
+            end
+            if VisualsSettings.HealthBarEnabled and not health_bar_instances[player] then
+                createHealthBar(player)
+            end
+            if VisualsSettings.SkeletonESPEnabled and not skeleton_esp_instances[player] then
+                createSkeletonESP(player)
+            end
+            if VisualsSettings.NameESPEnabled and not name_esp_instances[player] then
+                createNameESP(player)
+            end
+        end
+    end
+end)
+
+-- UI Creation & Handling
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/Library.lua"))()
+local Window = Library:CreateWindow({Title = 'Vortex.lol - paid dh', Center = true, AutoShow = true, TabPadding = 8, MenuFadeTime = 0.2})
+
+local GeneralTab = Window:AddTab("Slient aim")
+local MainBOX = GeneralTab:AddLeftTabbox("Main") do
+    local Main = MainBOX:AddTab("Main")
+    Main:AddToggle("aim_Enabled", {Text = "Enabled", Default = SilentAimSettings.Enabled}):AddKeyPicker("aim_Enabled_KeyPicker", {Default = SilentAimSettings.ToggleKey, SyncToggleState = true, Mode = "Toggle", Text = "Enabled", NoUI = false})
+    Options.aim_Enabled_KeyPicker:OnClick(function()
+        SilentAimSettings.Enabled = not SilentAimSettings.Enabled
+        Toggles.aim_Enabled:SetValue(SilentAimSettings.Enabled)
+        mouse_box.Visible = SilentAimSettings.Enabled and Toggles.MousePosition.Value
+    end)
+    Main:AddToggle("TeamCheck", {Text = "Team Check", Default = SilentAimSettings.TeamCheck}):OnChanged(function()
+        SilentAimSettings.TeamCheck = Toggles.TeamCheck.Value
+    end)
+    Main:AddToggle("VisibleCheck", {Text = "Visible Check", Default = SilentAimSettings.VisibleCheck}):OnChanged(function()
+        SilentAimSettings.VisibleCheck = Toggles.VisibleCheck.Value
+    end)
+    Main:AddDropdown("TargetPart", {AllowNull = true, Text = "Target Part", Default = SilentAimSettings.TargetPart, Values = {"Head", "HumanoidRootPart", "Random"}}):OnChanged(function()
+        SilentAimSettings.TargetPart = Options.TargetPart.Value
+    end)
+    Main:AddDropdown("Method", {AllowNull = true, Text = "slient aim (debug shit)", Default = SilentAimSettings.SilentAimMethod, Values = {"Raycast"}}):OnChanged(function() 
+        SilentAimSettings.SilentAimMethod = Options.Method.Value 
+    end)
+    Main:AddSlider('HitChance', {
+        Text = 'Hit chance',
+        Default = SilentAimSettings.HitChance,
+        Min = 0,
+        Max = 100,
+        Rounding = 1,
+        Compact = false,
+    })
+    Options.HitChance:OnChanged(function()
+        SilentAimSettings.HitChance = Options.HitChance.Value
+    end)
+    Main:AddToggle("autofire_Enabled", {Text = "Auto-Fire Enabled", Default = SilentAimSettings.AutoFireEnabled}):AddKeyPicker("autofire_Enabled_KeyPicker", {Default = SilentAimSettings.AutoFireToggleKey, SyncToggleState = true, Mode = "Toggle", Text = "Auto-Fire", NoUI = false})
+    Options.autofire_Enabled_KeyPicker:OnClick(function()
+        SilentAimSettings.AutoFireEnabled = not SilentAimSettings.AutoFireEnabled
+        Toggles.autofire_Enabled:SetValue(SilentAimSettings.AutoFireEnabled)
+    end)
+end
+
+local MiscellaneousBOX = GeneralTab:AddLeftTabbox("Miscellaneous")
+local FieldOfViewBOX = GeneralTab:AddLeftTabbox("Field Of View") do
+    local Main = FieldOfViewBOX:AddTab("Fov")
+    Main:AddToggle("Visible", {Text = "Fov", Default = SilentAimSettings.FOVVisible}):AddColorPicker("Color", {Default = Color3.fromRGB(255, 255, 255)}):OnChanged(function()
+        fov_circle.Visible = Toggles.Visible.Value
+        SilentAimSettings.FOVVisible = Toggles.Visible.Value
+        fov_circle.Color = Options.Color.Value
+    end)
+    Main:AddSlider("Radius", {Text = "FOV Circle Radius", Min = 0, Max = 360, Default = SilentAimSettings.FOVRadius, Rounding = 0}):OnChanged(function()
+        fov_circle.Radius = Options.Radius.Value
+        SilentAimSettings.FOVRadius = Options.Radius.Value
+    end)
+    Main:AddToggle("MousePosition", {Text = "Slient aim target", Default = SilentAimSettings.ShowSilentAimTarget}):AddColorPicker("MouseVisualizeColor", {Default = Color3.fromRGB(54, 57, 241)}):OnChanged(function()
+        mouse_box.Visible = Toggles.MousePosition.Value and SilentAimSettings.Enabled
+        SilentAimSettings.ShowSilentAimTarget = Toggles.MousePosition.Value 
+        mouse_box.Color = Options.MouseVisualizeColor.Value
+    end)
+    local PredictionTab = MiscellaneousBOX:AddTab("Prediction")
+    PredictionTab:AddToggle("Prediction", {Text = "Prediction", Default = SilentAimSettings.MouseHitPrediction}):OnChanged(function()
+        SilentAimSettings.MouseHitPrediction = Toggles.Prediction.Value
+    end)
+    PredictionTab:AddSlider("Amount", {Text = "Prediction Amount", Min = 0.165, Max = 1, Default = SilentAimSettings.MouseHitPredictionAmount, Rounding = 3}):OnChanged(function()
+        PredictionAmount = Options.Amount.Value
+        SilentAimSettings.MouseHitPredictionAmount = Options.Amount.Value
+    end)
+end
+
+local CreateConfigurationBOX = GeneralTab:AddRightTabbox("Create Configuration") do 
+    local Main = CreateConfigurationBOX:AddTab("Create Configuration")
+    Main:AddInput("CreateConfigTextBox", {Default = "", Numeric = false, Finished = false, Text = "Create Configuration to Create", Tooltip = "Creates a configuration file containing settings you can save and load", Placeholder = "File Name here"}):OnChanged(function()
+        if Options.CreateConfigTextBox.Value and string.len(Options.CreateConfigTextBox.Value) ~= "" then 
+            FileToSave = Options.CreateConfigTextBox.Value
+        end
+    end)
+    Main:AddButton("Create Configuration File", function()
+        if FileToSave ~= "" or FileToSave ~= nil then 
+            UpdateFile(FileToSave)
+        end
+    end)
+end
+
+local SaveConfigurationBOX = GeneralTab:AddRightTabbox("Save Configuration") do 
+    local Main = SaveConfigurationBOX:AddTab("Save Configuration")
+    Main:AddDropdown("SaveConfigurationDropdown", {AllowNull = true, Values = GetFiles(), Text = "Choose Configuration to Save"})
+    Main:AddButton("Save Configuration", function()
+        if Options.SaveConfigurationDropdown.Value then 
+            UpdateFile(Options.SaveConfigurationDropdown.Value)
+        end
+    end)
+end
+
+local LoadConfigurationBOX = GeneralTab:AddRightTabbox("Load Configuration") do 
+    local Main = LoadConfigurationBOX:AddTab("Load Configuration")
+    Main:AddDropdown("LoadConfigurationDropdown", {AllowNull = true, Values = GetFiles(), Text = "Choose Configuration to Load"})
+    Main:AddButton("Load Configuration", function()
+        if table.find(GetFiles(), Options.LoadConfigurationDropdown.Value) then
+            LoadFile(Options.LoadConfigurationDropdown.Value)
+        end
+    end)
+end
+
+local LegitbotTab = Window:AddTab("Legitbot")
+local LegitbotBOX = LegitbotTab:AddLeftTabbox("Legitbot") do
+    local Main = LegitbotBOX:AddTab("Main")
+    Main:AddToggle("legitbot_Enabled", {Text = "Enabled", Default = LegitbotSettings.Enabled}):AddKeyPicker("legitbot_Enabled_KeyPicker", {Default = "None", SyncToggleState = true, Mode = "Toggle", Text = "Enabled", NoUI = false})
+    Options.legitbot_Enabled_KeyPicker:OnClick(function()
+        LegitbotSettings.Enabled = not LegitbotSettings.Enabled
+        Toggles.legitbot_Enabled:SetValue(LegitbotSettings.Enabled)
+        legitbot_fov_circle.Visible = LegitbotSettings.Enabled and LegitbotSettings.CircleVisible
+        if LegitbotSettings.Enabled then
+            legitbotTarget = getClosestPlayerForLegitbot()
+            if not legitbotTarget then
+                LegitbotSettings.Enabled = false
+                Toggles.legitbot_Enabled:SetValue(false)
+                legitbot_fov_circle.Visible = false
+            end
+        else
+            legitbotTarget = nil
+        end
+    end)
+    Main:AddToggle("legitbot_StickyAim", {Text = "Sticky Aim", Default = LegitbotSettings.StickyAim}):OnChanged(function()
+        LegitbotSettings.StickyAim = Toggles.legitbot_StickyAim.Value
+        if not LegitbotSettings.StickyAim then
+            legitbotTarget = nil
+        end
+    end)
+    Main:AddDropdown("legitbot_Method", {AllowNull = true, Text = "Method", Default = LegitbotSettings.Method, Values = {"Mousemove", "Camlock"}}):OnChanged(function()
+        LegitbotSettings.Method = Options.legitbot_Method.Value
+    end)
+    Main:AddToggle("legitbot_TeamCheck", {Text = "Team Check", Default = LegitbotSettings.TeamCheck}):OnChanged(function()
+        LegitbotSettings.TeamCheck = Toggles.legitbot_TeamCheck.Value
+    end)
+    Main:AddDropdown("legitbot_AimPart", {AllowNull = true, Text = "Target Part", Default = LegitbotSettings.AimPart, Values = {"Head", "HumanoidRootPart", "UpperTorso", "LowerTorso"}}):OnChanged(function()
+        LegitbotSettings.AimPart = Options.legitbot_AimPart.Value
+    end)
+    Main:AddToggle("legitbot_AutoPrediction", {Text = "Auto Prediction", Default = LegitbotSettings.AutoPrediction}):OnChanged(function()
+        LegitbotSettings.AutoPrediction = Toggles.legitbot_AutoPrediction.Value
+    end)
+    Main:AddSlider("legitbot_Prediction", {Text = "Prediction Amount", Min = 0.1, Max = 0.2, Default = LegitbotSettings.Prediction, Rounding = 2}):OnChanged(function()
+        LegitbotSettings.Prediction = Options.legitbot_Prediction.Value
+    end)
+    Main:AddSlider("legitbot_FOVRadius", {Text = "FOV Radius", Min = 0, Max = 500, Default = LegitbotSettings.FOVRadius, Rounding = 0}):OnChanged(function()
+        LegitbotSettings.FOVRadius = Options.legitbot_FOVRadius.Value
+        legitbot_fov_circle.Radius = Options.legitbot_FOVRadius.Value
+    end)
+    Main:AddToggle("legitbot_CircleVisible", {Text = "Show FOV Circle", Default = LegitbotSettings.CircleVisible}):AddColorPicker("legitbot_CircleColor", {Default = LegitbotSettings.CircleColor}):OnChanged(function()
+        LegitbotSettings.CircleVisible = Toggles.legitbot_CircleVisible.Value
+        legitbot_fov_circle.Visible = LegitbotSettings.Enabled and Toggles.legitbot_CircleVisible.Value
+        legitbot_fov_circle.Color = Options.legitbot_CircleColor.Value
+        LegitbotSettings.CircleColor = Options.legitbot_CircleColor.Value
+    end)
+    Main:AddSlider("legitbot_Smoothness", {Text = "Smoothness", Min = 0.01, Max = 0.5, Default = LegitbotSettings.Smoothness, Rounding = 2}):OnChanged(function()
+        LegitbotSettings.Smoothness = Options.legitbot_Smoothness.Value
+    end)
+end
+
+local VisualsTab = Window:AddTab("Visuals")
+local VisualsBOX = VisualsTab:AddLeftTabbox("Visuals") do
+    local Main = VisualsBOX:AddTab("Main")
+    Main:AddToggle("visuals_BoxESPEnabled", {Text = "Box ESP Enabled", Default = VisualsSettings.BoxESPEnabled}):OnChanged(function()
+        VisualsSettings.BoxESPEnabled = Toggles.visuals_BoxESPEnabled.Value
+    end)
+    Main:AddDropdown("visuals_BoxESPMethod", {AllowNull = true, Text = "Box ESP Method", Default = VisualsSettings.BoxESPMethod, Values = {"Corner", "3D", "2D"}}):OnChanged(function()
+        VisualsSettings.BoxESPMethod = Options.visuals_BoxESPMethod.Value
+        for player, box in pairs(box_esp_instances) do
+            if VisualsSettings.BoxESPMethod == "2D" then
+                box[1].Visible = false
+                box[1]:Remove()
+            else
+                for _, line in ipairs(box) do
+                    line.Visible = false
+                    line:Remove()
+                end
+            end
+            box_esp_instances[player] = nil
+            if player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+                createBoxESP(player)
+            end
+        end
+    end)
+    Main:AddToggle("visuals_SkeletonESPEnabled", {Text = "Skeleton ESP Enabled", Default = VisualsSettings.SkeletonESPEnabled}):OnChanged(function()
+        VisualsSettings.SkeletonESPEnabled = Toggles.visuals_SkeletonESPEnabled.Value
+    end)
+    Main:AddToggle("visuals_HealthBarEnabled", {Text = "Health Bar Enabled", Default = VisualsSettings.HealthBarEnabled}):OnChanged(function()
+        VisualsSettings.HealthBarEnabled = Toggles.visuals_HealthBarEnabled.Value
+    end)
+    Main:AddToggle("visuals_NameESPEnabled", {Text = "Name ESP Enabled", Default = VisualsSettings.NameESPEnabled}):OnChanged(function()
+        VisualsSettings.NameESPEnabled = Toggles.visuals_NameESPEnabled.Value
+    end)
+    Main:AddToggle("visuals_NameESPTeamCheck", {Text = "Name ESP Team Check", Default = VisualsSettings.NameESPTeamCheck}):OnChanged(function()
+        VisualsSettings.NameESPTeamCheck = Toggles.visuals_NameESPTeamCheck.Value
+    end)
+    Main:AddToggle("visuals_NameESPVisibleCheck", {Text = "Name ESP Visible Check", Default = VisualsSettings.NameESPVisibleCheck}):OnChanged(function()
+        VisualsSettings.NameESPVisibleCheck = Toggles.visuals_NameESPVisibleCheck.Value
+    end)
+    Main:AddSlider("visuals_NameESPMaxDistance", {Text = "Name ESP Max Distance", Min = 100, Max = 2000, Default = VisualsSettings.NameESPMaxDistance, Rounding = 0}):OnChanged(function()
+        VisualsSettings.NameESPMaxDistance = Options.visuals_NameESPMaxDistance.Value
+    end)
+    Main:AddToggle("visuals_NameESPColor", {Text = "Name ESP Color"}):AddColorPicker("visuals_NameESPColorPicker", {Default = VisualsSettings.NameESPColor}):OnChanged(function()
+        VisualsSettings.NameESPColor = Options.visuals_NameESPColorPicker.Value
+    end)
+    Main:AddToggle("visuals_TeamCheck", {Text = "Team Check", Default = VisualsSettings.TeamCheck}):OnChanged(function()
+        VisualsSettings.TeamCheck = Toggles.visuals_TeamCheck.Value
+    end)
+    Main:AddToggle("visuals_VisibleOnly", {Text = "Visible Only", Default = VisualsSettings.VisibleOnly}):OnChanged(function()
+        VisualsSettings.VisibleOnly = Toggles.visuals_VisibleOnly.Value
+    end)
+end
+
+local LocalPlayerChamsBOX = VisualsTab:AddRightTabbox("Local Player Chams") do
+    local Main = LocalPlayerChamsBOX:AddTab("Local Player Chams")
+    Main:AddToggle("visuals_LocalPlayerChamsEnabled", {Text = "Enabled", Default = VisualsSettings.LocalPlayerChamsEnabled}):OnChanged(function()
+        VisualsSettings.LocalPlayerChamsEnabled = Toggles.visuals_LocalPlayerChamsEnabled.Value
+        if LocalPlayer.Character then
+            if VisualsSettings.LocalPlayerChamsEnabled then
+                applyForceFieldToModel(LocalPlayer.Character, VisualsSettings.LocalPlayerChamsColor)
+            else
+                for _, desc in pairs(LocalPlayer.Character:GetDescendants()) do
+                    if desc:IsA("BasePart") then
+                        desc.Material = Enum.Material.Plastic
+                        desc.Color = Color3.fromRGB(255, 255, 255)
+                        desc.CanCollide = true
+                    end
+                end
+            end
+        end
+    end)
+    Main:AddToggle("visuals_LocalPlayerChamsColor", {Text = "Color"}):AddColorPicker("visuals_LocalPlayerChamsColorPicker", {Default = VisualsSettings.LocalPlayerChamsColor}):OnChanged(function()
+        VisualsSettings.LocalPlayerChamsColor = Options.visuals_LocalPlayerChamsColorPicker.Value
+        if VisualsSettings.LocalPlayerChamsEnabled and LocalPlayer.Character then
+            applyForceFieldToModel(LocalPlayer.Character, VisualsSettings.LocalPlayerChamsColor)
+        end
+    end)
+end
+
+local HeldWeaponChamsBOX = VisualsTab:AddRightTabbox("Held Weapon Chams") do
+    local Main = HeldWeaponChamsBOX:AddTab("Held Weapon Chams")
+    Main:AddToggle("visuals_HeldWeaponChamsEnabled", {Text = "Enabled", Default = VisualsSettings.HeldWeaponChamsEnabled}):OnChanged(function()
+        VisualsSettings.HeldWeaponChamsEnabled = Toggles.visuals_HeldWeaponChamsEnabled.Value
+        if LocalPlayer.Character then
+            for _, child in pairs(LocalPlayer.Character:GetChildren()) do
+                if child:IsA("Tool") then
+                    if VisualsSettings.HeldWeaponChamsEnabled then
+                        applyForceFieldToModel(child, VisualsSettings.HeldWeaponChamsColor)
+                    else
+                        for _, desc in pairs(child:GetDescendants()) do
+                            if desc:IsA("BasePart") then
+                                desc.Material = Enum.Material.Plastic
+                                desc.Color = Color3.fromRGB(255, 255, 255)
+                                desc.CanCollide = true
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+    Main:AddToggle("visuals_HeldWeaponChamsColor", {Text = "Color"}):AddColorPicker("visuals_HeldWeaponChamsColorPicker", {Default = VisualsSettings.HeldWeaponChamsColor}):OnChanged(function()
+        VisualsSettings.HeldWeaponChamsColor = Options.visuals_HeldWeaponChamsColorPicker.Value
+        if VisualsSettings.HeldWeaponChamsEnabled and LocalPlayer.Character then
+            for _, child in pairs(LocalPlayer.Character:GetChildren()) do
+                if child:IsA("Tool") then
+                    applyForceFieldToModel(child, VisualsSettings.HeldWeaponChamsColor)
+                end
+            end
+        end
+    end)
+end
+
+local MiscTab = Window:AddTab("Misc")
+local MiscBOX = MiscTab:AddLeftTabbox("Main") do
+    local Main = MiscBOX:AddTab("Main")
+    Main:AddToggle("misc_FlyEnabled", {Text = "Fly Enabled", Default = MiscSettings.FlyEnabled}):AddKeyPicker("misc_FlyEnabled_KeyPicker", {Default = "None", SyncToggleState = true, Mode = "Toggle", Text = "Fly Enabled", NoUI = false})
+    Options.misc_FlyEnabled_KeyPicker:OnClick(function()
+        MiscSettings.FlyEnabled = not MiscSettings.FlyEnabled
+        Toggles.misc_FlyEnabled:SetValue(MiscSettings.FlyEnabled)
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid.PlatformStand = MiscSettings.FlyEnabled
+            if not MiscSettings.FlyEnabled then
+                LocalPlayer.Character.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+            end
+        end
+    end)
+    Main:AddSlider("misc_FlySpeed", {Text = "Fly Speed", Min = 10, Max = 100, Default = MiscSettings.FlySpeed, Rounding = 0}):OnChanged(function()
+        MiscSettings.FlySpeed = Options.misc_FlySpeed.Value
+    end)
+    Main:AddToggle("misc_OrbitEnabled", {Text = "Orbit Enabled", Default = MiscSettings.OrbitEnabled}):AddKeyPicker("misc_OrbitEnabled_KeyPicker", {Default = MiscSettings.OrbitToggleKey, SyncToggleState = true, Mode = "Toggle", Text = "Orbit Enabled", NoUI = false})
+    Options.misc_OrbitEnabled_KeyPicker:OnClick(function()
+        MiscSettings.OrbitEnabled = not MiscSettings.OrbitEnabled
+        Toggles.misc_OrbitEnabled:SetValue(MiscSettings.OrbitEnabled)
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid.PlatformStand = MiscSettings.OrbitEnabled
+            if not MiscSettings.OrbitEnabled then
+                LocalPlayer.Character.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+                orbitTarget = nil
+            end
+        end
+    end)
+    Main:AddSlider("misc_OrbitDistance", {Text = "Orbit Distance", Min = 5, Max = 20, Default = MiscSettings.OrbitDistance, Rounding = 1}):OnChanged(function()
+        MiscSettings.OrbitDistance = Options.misc_OrbitDistance.Value
+    end)
+    Main:AddSlider("misc_OrbitSpinSpeed", {Text = "Orbit Spin Speed", Min = 1, Max = 10, Default = MiscSettings.OrbitSpinSpeed, Rounding = 1}):OnChanged(function()
+        MiscSettings.OrbitSpinSpeed = Options.misc_OrbitSpinSpeed.Value
+    end)
+    Main:AddSlider("misc_OrbitHeight", {Text = "Orbit Height", Min = -10, Max = 10, Default = MiscSettings.OrbitHeight, Rounding = 1}):OnChanged(function()
+        MiscSettings.OrbitHeight = Options.misc_OrbitHeight.Value
+    end)
+    Main:AddToggle("misc_NoClipEnabled", {Text = "NoClip Enabled", Default = MiscSettings.NoClipEnabled}):AddKeyPicker("misc_NoClipEnabled_KeyPicker", {Default = MiscSettings.NoClipToggleKey, SyncToggleState = true, Mode = "Toggle", Text = "NoClip Enabled", NoUI = false})
+    Options.misc_NoClipEnabled_KeyPicker:OnClick(function()
+        MiscSettings.NoClipEnabled = not MiscSettings.NoClipEnabled
+        Toggles.misc_NoClipEnabled:SetValue(MiscSettings.NoClipEnabled)
+        if not MiscSettings.NoClipEnabled and LocalPlayer.Character then
+            for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = true
+                end
+            end
+        end
+    end)
+    Main:AddToggle("misc_RapidFireEnabled", {Text = "Rapid Fire Enabled", Default = MiscSettings.RapidFireEnabled}):AddKeyPicker("misc_RapidFireEnabled_KeyPicker", {Default = "None", SyncToggleState = true, Mode = "Toggle", Text = "Rapid Fire Enabled", NoUI = false})
+    Options.misc_RapidFireEnabled_KeyPicker:OnClick(function()
+        MiscSettings.RapidFireEnabled = not MiscSettings.RapidFireEnabled
+        Toggles.misc_RapidFireEnabled:SetValue(MiscSettings.RapidFireEnabled)
+    end)
+    Main:AddSlider("misc_RapidFireDelay", {Text = "Rapid Fire Delay", Min = 0.01, Max = 0.1, Default = MiscSettings.RapidFireDelay, Rounding = 3}):OnChanged(function()
+        MiscSettings.RapidFireDelay = Options.misc_RapidFireDelay.Value
+    end)
+end
+
+local HitboxBOX = MiscTab:AddRightTabbox("Hitbox") do
+    local Main = HitboxBOX:AddTab("Hitbox")
+    Main:AddToggle("misc_HitboxExpanderEnabled", {Text = "Hitbox Expander Enabled", Default = MiscSettings.HitboxExpanderEnabled}):OnChanged(function()
+        MiscSettings.HitboxExpanderEnabled = Toggles.misc_HitboxExpanderEnabled.Value
+        if not MiscSettings.HitboxExpanderEnabled then
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                    local humanoidRootPart = player.Character.HumanoidRootPart
+                    pcall(function()
+                        humanoidRootPart.Size = Vector3.new(2, 2, 1)
+                        humanoidRootPart.Transparency = 0
+                        humanoidRootPart.Color = Color3.fromRGB(255, 255, 255)
+                        humanoidRootPart.Material = Enum.Material.Plastic
+                        humanoidRootPart.CanCollide = true
+                    end)
+                end
+            end
+        end
+    end)
+    Main:AddSlider("misc_HitboxExpanderSize", {Text = "Hitbox Size", Min = 1, Max = 50, Default = MiscSettings.HitboxExpanderSize, Rounding = 0}):OnChanged(function()
+        MiscSettings.HitboxExpanderSize = Options.misc_HitboxExpanderSize.Value
+    end)
+    Main:AddToggle("misc_HitboxExpanderColor", {Text = "Color"}):AddColorPicker("misc_HitboxExpanderColorPicker", {Default = MiscSettings.HitboxExpanderColor}):OnChanged(function()
+        MiscSettings.HitboxExpanderColor = Options.misc_HitboxExpanderColorPicker.Value
+    end)
+end
+
+resume(create(function()
+    RenderStepped:Connect(function()
+        if Toggles.MousePosition.Value and Toggles.aim_Enabled.Value then
+            if getClosestPlayer() then 
+                local Root = getClosestPlayer().Parent.PrimaryPart or getClosestPlayer()
+                local RootToViewportPoint, IsOnScreen = WorldToViewportPoint(Camera, Root.Position)
+                mouse_box.Visible = IsOnScreen
+                mouse_box.Position = Vector2.new(RootToViewportPoint.X, RootToViewportPoint.Y)
+            else 
+                mouse_box.Visible = false 
+                mouse_box.Position = Vector2.new()
+            end
+        end
+        if Toggles.Visible.Value then 
+            fov_circle.Visible = Toggles.Visible.Value
+            fov_circle.Color = Options.Color.Value
+            fov_circle.Position = getMousePosition()
+        end
+        -- Auto-Fire Logic
+        if SilentAimSettings.AutoFireEnabled and Toggles.aim_Enabled.Value then
+            local closestPlayer = getClosestPlayer()
+            if closestPlayer and CalculateChance(SilentAimSettings.HitChance) then
+                local character = closestPlayer.Parent
+                if character and character:FindFirstChild("Humanoid") and character.Humanoid.Health > 0 then
+                    mouse1press()
+                    wait(0.05)
+                    mouse1release()
+                end
+            end
+        end
+    end)
+end))
+
+-- Hooks
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
+    local Method = getnamecallmethod()
+    local Arguments = {...}
+    local self = Arguments[1]
+    local chance = CalculateChance(SilentAimSettings.HitChance)
+    if Toggles.aim_Enabled.Value and self == workspace and not checkcaller() and chance == true then
+        if Method == "FindPartOnRayWithIgnoreList" and SilentAimSettings.SilentAimMethod == "FindPartOnRayWithIgnoreList" then
+            if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithIgnoreList) then
+                local A_Ray = Arguments[2]
+                local HitPart = getClosestPlayer()
+                if HitPart then
+                    local Origin = A_Ray.Origin
+                    local Direction = getDirection(Origin, HitPart.Position)
+                    Arguments[2] = Ray.new(Origin, Direction)
+                    return oldNamecall(unpack(Arguments))
+                end
+            end
+        elseif Method == "FindPartOnRayWithWhitelist" and SilentAimSettings.SilentAimMethod == "FindPartOnRayWithWhitelist" then
+            if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithWhitelist) then
+                local A_Ray = Arguments[2]
+                local HitPart = getClosestPlayer()
+                if HitPart then
+                    local Origin = A_Ray.Origin
+                    local Direction = getDirection(Origin, HitPart.Position)
+                    Arguments[2] = Ray.new(Origin, Direction)
+                    return oldNamecall(unpack(Arguments))
+                end
+            end
+        elseif (Method == "FindPartOnRay" or Method == "findPartOnRay") and SilentAimSettings.SilentAimMethod:lower() == Method:lower() then
+            if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRay) then
+                local A_Ray = Arguments[2]
+                local HitPart = getClosestPlayer()
+                if HitPart then
+                    local Origin = A_Ray.Origin
+                    local Direction = getDirection(Origin, HitPart.Position)
+                    Arguments[2] = Ray.new(Origin, Direction)
+                    return oldNamecall(unpack(Arguments))
+                end
+            end
+        elseif Method == "Raycast" and SilentAimSettings.SilentAimMethod == "Raycast" then
+            if ValidateArguments(Arguments, ExpectedArguments.Raycast) then
+                local A_Origin = Arguments[2]
+                local HitPart = getClosestPlayer()
+                if HitPart then
+                    local predictedPos = HitPart.Position
+                    if SilentAimSettings.MouseHitPrediction then
+                        predictedPos = predictedPos + (HitPart.Velocity * SilentAimSettings.MouseHitPredictionAmount)
+                    end
+                    Arguments[3] = getDirection(A_Origin, predictedPos)
+                    return oldNamecall(unpack(Arguments))
+                end
+            end
+        end
+    end
+    return oldNamecall(...)
+end))
+
+local oldIndex = nil 
+oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, Index)
+    if self == Mouse and not checkcaller() and Toggles.aim_Enabled.Value and SilentAimSettings.SilentAimMethod == "Mouse.Hit/Target" and getClosestPlayer() then
+        local HitPart = getClosestPlayer()
+        if Index == "Target" or Index == "target" then 
+            return HitPart
+        elseif Index == "Hit" or Index == "hit" then 
+            return ((SilentAimSettings.MouseHitPrediction and (HitPart.CFrame + (HitPart.Velocity * PredictionAmount))) or (not SilentAimSettings.MouseHitPrediction and HitPart.CFrame))
+        elseif Index == "X" or Index == "x" then 
+            return self.X 
+        elseif Index == "Y" or Index == "y" then 
+            return self.Y 
+        elseif Index == "UnitRay" then 
+            return Ray.new(self.Origin, (self.Hit - self.Origin).Unit)
+        end
+    end
+    return oldIndex(self, Index)
+end))
+
+-- Cleanup
+game.Players.PlayerRemoving:Connect(function(player)
+    if player == legitbotTarget then
+        legitbotTarget = nil
+        LegitbotSettings.Enabled = false
+        Toggles.legitbot_Enabled:SetValue(false)
+        legitbot_fov_circle.Visible = false
+    end
+    if player == orbitTarget then
+        orbitTarget = nil
+        MiscSettings.OrbitEnabled = false
+        Toggles.misc_OrbitEnabled:SetValue(false)
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid.PlatformStand = false
+            LocalPlayer.Character.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+        end
+    end
+    if box_esp_instances[player] then
+        if VisualsSettings.BoxESPMethod == "2D" then
+            box_esp_instances[player][1]:Remove()
+        else
+            for _, line in ipairs(box_esp_instances[player]) do
+                line:Remove()
+            end
+        end
+        box_esp_instances[player] = nil
+    end
+    if health_bar_instances[player] then
+        health_bar_instances[player]:Remove()
+        health_bar_instances[player] = nil
+    end
+    if skeleton_esp_instances[player] then
+        for _, line in ipairs(skeleton_esp_instances[player].lines) do
+            line:Remove()
+        end
+        skeleton_esp_instances[player] = nil
+    end
+    if name_esp_instances[player] then
+        name_esp_instances[player]:Destroy()
+        name_esp_instances[player] = nil
+    end
+end)
