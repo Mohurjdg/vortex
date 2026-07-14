@@ -1487,7 +1487,7 @@ do
                 ZIndex = 5;
             });
             
-            Library:AddCorner(Outer, 3);
+            Library:AddCorner(Outer, 2);
 
             local Shadow = Library:Create('ImageLabel', {
                 BackgroundTransparency = 1;
@@ -1510,7 +1510,7 @@ do
                 Parent = Outer;
             });
             
-            Library:AddCorner(Inner, 2);
+            Library:AddCorner(Inner, 1);
 
             local Label = Library:CreateLabel({
                 Size = UDim2.new(1, 0, 1, 0);
@@ -1739,7 +1739,7 @@ do
             Parent = Container;
         });
         
-        Library:AddCorner(TextBoxOuter, 3);
+        Library:AddCorner(TextBoxOuter, 2);
 
         local TextBoxInner = Library:Create('Frame', {
             BackgroundColor3 = Library.MainColor;
@@ -1751,7 +1751,7 @@ do
             Parent = TextBoxOuter;
         });
         
-        Library:AddCorner(TextBoxInner, 2);
+        Library:AddCorner(TextBoxInner, 1);
 
         Library:AddToRegistry(TextBoxInner, {
             BackgroundColor3 = 'MainColor';
@@ -1762,19 +1762,6 @@ do
             { BorderColor3 = 'AccentColor' },
             { BorderColor3 = 'Black' }
         );
-
-        if type(Info.Tooltip) == 'string' then
-            Library:AddToolTip(Info.Tooltip, TextBoxOuter)
-        end
-
-        Library:Create('UIGradient', {
-            Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
-                ColorSequenceKeypoint.new(1, Color3.fromRGB(212, 212, 212))
-            });
-            Rotation = 90;
-            Parent = TextBoxInner;
-        });
 
         local Container = Library:Create('Frame', {
             BackgroundTransparency = 1;
@@ -1931,7 +1918,7 @@ do
             Parent = Container;
         });
         
-        Library:AddCorner(ToggleOuter, 2);
+        Library:AddCorner(ToggleOuter, 1);
 
         Library:AddToRegistry(ToggleOuter, {
             BorderColor3 = 'Black';
@@ -1947,7 +1934,7 @@ do
             Parent = ToggleOuter;
         });
         
-        Library:AddCorner(ToggleInner, 1);
+        Library:AddCorner(ToggleInner, 0);
 
         Library:AddToRegistry(ToggleInner, {
             BackgroundColor3 = 'MainColor';
@@ -2120,7 +2107,7 @@ do
             Parent = Container;
         });
         
-        Library:AddCorner(SliderOuter, 3);
+        Library:AddCorner(SliderOuter, 2);
 
         Library:AddToRegistry(SliderOuter, {
             BorderColor3 = 'Black';
@@ -2136,7 +2123,7 @@ do
             Parent = SliderOuter;
         });
         
-        Library:AddCorner(SliderInner, 2);
+        Library:AddCorner(SliderInner, 1);
 
         Library:AddToRegistry(SliderInner, {
             BackgroundColor3 = 'MainColor';
@@ -2151,7 +2138,7 @@ do
             Parent = SliderInner;
         });
         
-        Library:AddCorner(Fill, 2);
+        Library:AddCorner(Fill, 1);
 
         Library:AddToRegistry(Fill, {
             BackgroundColor3 = 'AccentColor';
@@ -2343,7 +2330,7 @@ do
             Parent = Container;
         });
         
-        Library:AddCorner(DropdownOuter, 3);
+        Library:AddCorner(DropdownOuter, 2);
 
         Library:AddToRegistry(DropdownOuter, {
             BorderColor3 = 'Black';
@@ -2359,7 +2346,7 @@ do
             Parent = DropdownOuter;
         });
         
-        Library:AddCorner(DropdownInner, 2);
+        Library:AddCorner(DropdownInner, 1);
 
         Library:AddToRegistry(DropdownInner, {
             BackgroundColor3 = 'MainColor';
@@ -2415,7 +2402,7 @@ do
             Parent = ScreenGui;
         });
         
-        Library:AddCorner(ListOuter, 3);
+        Library:AddCorner(ListOuter, 2);
 
         local function RecalculateListPosition()
             ListOuter.Position = UDim2.fromOffset(DropdownOuter.AbsolutePosition.X, DropdownOuter.AbsolutePosition.Y + DropdownOuter.Size.Y.Offset + 1);
@@ -2440,7 +2427,7 @@ do
             Parent = ListOuter;
         });
         
-        Library:AddCorner(ListInner, 2);
+        Library:AddCorner(ListInner, 1);
 
         Library:AddToRegistry(ListInner, {
             BackgroundColor3 = 'MainColor';
@@ -2865,7 +2852,7 @@ do
         Parent = ScreenGui;
     });
     
-    Library:AddCorner(WatermarkOuter, 4);
+    Library:AddCorner(WatermarkOuter, 3);
     
     -- Watermark shadow
     local WatermarkShadow = Library:Create('ImageLabel', {
@@ -2890,7 +2877,7 @@ do
         Parent = WatermarkOuter;
     });
     
-    Library:AddCorner(WatermarkInner, 3);
+    Library:AddCorner(WatermarkInner, 2);
 
     Library:AddToRegistry(WatermarkInner, {
         BorderColor3 = 'AccentColor';
@@ -2949,7 +2936,7 @@ do
         Parent = ScreenGui;
     });
     
-    Library:AddCorner(KeybindOuter, 4);
+    Library:AddCorner(KeybindOuter, 3);
 
     local KeybindInner = Library:Create('Frame', {
         BackgroundColor3 = Library.MainColor;
@@ -2961,7 +2948,7 @@ do
         Parent = KeybindOuter;
     });
     
-    Library:AddCorner(KeybindInner, 3);
+    Library:AddCorner(KeybindInner, 2);
 
     Library:AddToRegistry(KeybindInner, {
         BackgroundColor3 = 'MainColor';
@@ -3164,7 +3151,7 @@ function Library:CreateWindow(...)
         Parent = ScreenGui;
     });
     
-    Library:AddCorner(Outer, 6);
+    Library:AddCorner(Outer, 4);
 
     Library:MakeDraggable(Outer, 25);
     
@@ -3420,7 +3407,7 @@ function Library:CreateWindow(...)
                 Parent = Info.Side == 1 and LeftSide or RightSide;
             });
             
-            Library:AddCorner(BoxOuter, 4);
+            Library:AddCorner(BoxOuter, 3);
 
             Library:AddToRegistry(BoxOuter, {
                 BackgroundColor3 = 'BackgroundColor';
@@ -3436,7 +3423,7 @@ function Library:CreateWindow(...)
                 Parent = BoxOuter;
             });
             
-            Library:AddCorner(BoxInner, 3);
+            Library:AddCorner(BoxInner, 2);
 
             Library:AddToRegistry(BoxInner, {
                 BackgroundColor3 = 'BackgroundColor';
@@ -3451,7 +3438,7 @@ function Library:CreateWindow(...)
                 Parent = BoxInner;
             });
             
-            Library:AddCorner(Highlight, UDim.new(1, 0));
+            Library:AddCorner(Highlight, 1);
 
             Library:AddToRegistry(Highlight, {
                 BackgroundColor3 = 'AccentColor';
