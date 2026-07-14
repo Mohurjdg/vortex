@@ -3740,43 +3740,6 @@ function Library:CreateWindow(...)
         Parent = ScreenGui;
     });
 
-    local ModalElement = Library:Create('TextButton', {
-        BackgroundTransparency = 1;
-        Size = UDim2.new(0, 0, 0, 0);
-        Visible = true;
-        Text = '';
-        Modal = false;
-        Parent = ScreenGui;
-    });
-    
-    -- Background dimming overlay
-    local DimmingOverlay = Library:Create('Frame', {
-        BackgroundColor3 = Color3.new(0, 0, 0);
-        BackgroundTransparency = 1;
-        BorderSizePixel = 0;
-        Position = UDim2.fromScale(0, 0);
-        Size = UDim2.fromScale(1, 1);
-        ZIndex = 0;
-        Visible = false;
-        Parent = ScreenGui;
-    });
-    
-    -- Blur effect (using ImageLabel with blur)
-    local BlurOverlay = Library:Create('ImageLabel', {
-        BackgroundTransparency = 1;
-        Image = 'rbxasset://textures/ui/LuaChat_modules/UI_icon_disconnect.png';
-        ImageTransparency = 0.5;
-        Position = UDim2.fromScale(0, 0);
-        Size = UDim2.fromScale(1, 1);
-        ZIndex = 0;
-        Visible = false;
-        Parent = ScreenGui;
-    });
-    
-    Library:AddToRegistry(DimmingOverlay, {
-        BackgroundColor3 = 'Black';
-    });
-
     local TransparencyCache = {};
     local Toggled = false;
     local Fading = false;
@@ -3792,22 +3755,11 @@ function Library:CreateWindow(...)
         ModalElement.Modal = Toggled;
 
         if Toggled then
-            -- Show menu and dimming
+            -- A bit scuffed, but if we're going from not toggled -> toggled we want to show the frame immediately so that the fade is visible.
             Outer.Visible = true;
-            DimmingOverlay.Visible = true;
-            BlurOverlay.Visible = true;
-            
-            -- Fade in dimming
-            TweenService:Create(DimmingOverlay, TweenInfo.new(FadeTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                BackgroundTransparency = 0.4;
-            }):Play();
-            
-            -- Slight blur animation (using alpha)
-            TweenService:Create(BlurOverlay, TweenInfo.new(FadeTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                ImageTransparency = 0.92;
-            }):Play();
 
             task.spawn(function()
+                -- TODO: add cursor fade?
                 local State = InputService.MouseIconEnabled;
 
                 local Cursor = Drawing.new('Triangle');
@@ -3844,15 +3796,6 @@ function Library:CreateWindow(...)
                 Cursor:Remove();
                 CursorOutline:Remove();
             end);
-        else
-            -- Fade out dimming
-            TweenService:Create(DimmingOverlay, TweenInfo.new(FadeTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                BackgroundTransparency = 1;
-            }):Play();
-            
-            TweenService:Create(BlurOverlay, TweenInfo.new(FadeTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                ImageTransparency = 1;
-            }):Play();
         end;
 
         for _, Desc in next, Outer:GetDescendants() do
@@ -3892,8 +3835,6 @@ function Library:CreateWindow(...)
         task.wait(FadeTime);
 
         Outer.Visible = Toggled;
-        DimmingOverlay.Visible = Toggled;
-        BlurOverlay.Visible = Toggled;
 
         Fading = false;
     end
@@ -3909,13 +3850,6 @@ function Library:CreateWindow(...)
     end))
 
     if Config.AutoShow then task.spawn(Library.Toggle) end
-
-    -- Close menu when clicking on dimming overlay
-    DimmingOverlay.InputBegan:Connect(function(Input)
-        if Input.UserInputType == Enum.UserInputType.MouseButton1 and Toggled then
-            task.spawn(Library.Toggle);
-        end
-    end);
 
     Window.Holder = Outer;
 
